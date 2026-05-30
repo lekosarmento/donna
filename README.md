@@ -1,4 +1,4 @@
-# ⚖️ Donna Legal Co-pilot (V2.1)
+# Donna Legal Co-pilot (V2.1)
 > **An Enterprise-Grade Strategic Legal AI Assistant & Compliance calculated deadline ecosystem for Brazilian Law Firms.**
 
 Donna is a state-of-the-art legal co-pilot designed to automate procedural deadlines under Brazilian law (CPC/15 and CNJ regulations), parse Official Judicial Gazettes (Diários Oficiais) using cognitive AI, manage magistrate behavioral profiles, and serve as an advanced semantic strategic advisor (RAG) for litigation teams.
@@ -7,7 +7,7 @@ Built with a **deterministic regulatory engine** and a **resilient hybrid databa
 
 ---
 
-## 🚀 Key Architectural Features
+## Key Architectural Features
 
 *   **Motor 3: Timezone-Locked Procedural Deadline Engine:** Evaluates calculated deadlines under strict CPC/15 and CNJ Resolutions 455/2022 and 569/2024. Implements precise calculations for DJEN, Domicílio Eletrônico (5th business day citação), 10 calendar days tacit service window, and automatic blocking + high-risk warnings for PJ Private citação inertia (avoiding the 5% fine under Art. 246, §1º-C).
 *   **Logical Multi-Tenancy (Supabase RLS & JWT Claims):** Strict database-level isolation. Queries do not accept tenant IDs via URL or body parameters; instead, PostgreSQL decodes `escritorio_id` directly from the authenticated JWT session settings, eliminating cross-tenant data leaks.
@@ -20,7 +20,7 @@ Built with a **deterministic regulatory engine** and a **resilient hybrid databa
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```bash
 d:\Donna
@@ -49,7 +49,7 @@ d:\Donna
 
 ---
 
-## 🛠️ Local Installation & Setup
+## Local Installation & Setup
 
 ### Prerequisites
 *   Node.js (v18 or higher)
@@ -88,7 +88,7 @@ npm run dev
 
 ---
 
-## 🧪 Automated Verification Suite
+## Automated Verification Suite
 
 Donna incorporates a rigorous test suite inside `src/scratch/` that validates core functionalities locally before committing code changes:
 
@@ -111,7 +111,7 @@ Donna incorporates a rigorous test suite inside `src/scratch/` that validates co
 
 ---
 
-## 🔒 Security Compliance
+## Security Compliance
 
 *   **Credentials Protection:** The `.gitignore` registry excludes all `.env` files, preventing API keys, passwords, and private URLs from ever being pushed to public repositories.
 *   **No local dumps in Git:** Local fallback data files (`conversas_donna.json`, `processos_donna.json`, etc.) are fully ignored to prevent local development database dumps from leaking client data.
