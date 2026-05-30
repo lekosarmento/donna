@@ -1,0 +1,245 @@
+{
+  "name": "Donna — Ingestão de Movimentações e Alertas WhatsApp",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "movimentacao-judicial",
+        "options": {}
+      },
+      "id": "e0e8c07e-72df-425b-b9f1-a189b251147a",
+      "name": "Webhook: Ingestão de Evento",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3000/webhooks/movimentacao",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"numero_cnj\": \"{{ $json.body.numero_cnj }}\",\n  \"data_evento\": \"{{ $json.body.data_evento || $now.toString() }}\",\n  \"titulo\": \"{{ $json.body.titulo }}\",\n  \"descricao\": \"{{ $json.body.descricao }}\",\n  \"raw_payload\": {{ JSON.stringify($json.body) }}\n}",
+        "options": {}
+      },
+      "id": "c13ea4b8-22f3-4fb4-bf43-7f284c1cc8f9",
+      "name": "HTTP Request: Donna Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        470,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c6a256df-7fe8-448f-aa1c-2f9547d6e5a4",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "sucesso",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "80fd909c-36bc-4521-b0e1-ad1563fcd779",
+      "name": "Sucesso no Cadastro?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        690,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "e4a2e56e-8d8a-4467-bc22-cf1ffc91b5c4",
+              "leftValue": "={{ $json.prazo_aberto }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            },
+            {
+              "id": "a9a3b68f-cf2e-4b68-80f4-5f5f7823f66a",
+              "leftValue": "={{ $json.revelancia }}",
+              "rightValue": "urgente",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "76fa968f-aa2c-4b68-80c4-6f5f7823f77b",
+      "name": "Prazo ou Urgente?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        910,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVOLUTION_API_URL }}/message/sendText/{{ $env.EVOLUTION_INSTANCE_NAME }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"{{ $json.whatsapp_destinatario }}\",\n  \"options\": {\n    \"delay\": 1200,\n    \"presence\": \"composing\"\n  },\n  \"textMessage\": {\n    \"text\": \"{{ $json.mensagem_whatsapp_formatada }}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "314f82d1-cf33-4f9e-a0ee-7a6e7dfc333a",
+      "name": "Evolution API: WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1130,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.RESEND_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"from\": \"Donna <{{ $env.EMAIL_REMETENTE }}>\",\n  \"to\": [\"{{ $json.email_destinatario }}\"],\n  \"subject\": \"🚨 Donna Alerta: {{ $json.titulo_alerta }}\",\n  \"html\": \"{{ $json.corpo_email_html }}\"\n}",
+        "options": {}
+      },
+      "id": "b1b1b1b1-2222-3333-4444-555555555555",
+      "name": "Resend: E-mail",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1130,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## FLUXO DE ORQUESTRAÇÃO DONNA\nEste fluxo n8n intercepta as movimentações judiciais enviadas por APIs de monitoramento (DataJud/Jusbrasil), envia ao backend Donna para processamento/cálculo, e se houver urgência ou abertura de prazos, realiza o disparo automatizado via WhatsApp (Evolution) e E-mail (Resend).",
+        "height": 160,
+        "width": 380
+      },
+      "id": "note_1",
+      "name": "Nota do Fluxo",
+      "type": "n8n-nodes-base.note",
+      "typeVersion": 1,
+      "position": [
+        250,
+        80
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook: Ingestão de Evento": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request: Donna Backend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request: Donna Backend": {
+      "main": [
+        [
+          {
+            "node": "Sucesso no Cadastro?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sucesso no Cadastro?": {
+      "main": [
+        [
+          {
+            "node": "Prazo ou Urgente?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Prazo ou Urgente?": {
+      "main": [
+        [
+          {
+            "node": "Evolution API: WhatsApp",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Resend: E-mail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "donna_workflow_processos",
+  "active": true
+}

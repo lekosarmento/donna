@@ -1,0 +1,713 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+:root {
+  /* PALETA MODO ESCURO OBSIDIANA & OURO — Harvey AI Premium */
+  --bg-primary: #030407;      /* Preto Obsidiana Absoluto */
+  --bg-secondary: #080a10;    /* Cinza Carbono Profundo */
+  --bg-card: rgba(8, 10, 16, 0.95); /* Painel Obsidiana Translúcido */
+  
+  /* Acentos Metálicos e Neon Cyber-Judicial */
+  --color-gold: #d4af37;      /* Ouro Harvey Reluzente */
+  --color-gold-hover: #f3e5ab;
+  --color-gold-glow: rgba(212, 175, 55, 0.25);
+  
+  --accent-cyan: #06b6d4;      /* Ciano de Cognição / Rede de IA */
+  --accent-cyan-glow: rgba(6, 182, 212, 0.25);
+  
+  --border-color: rgba(212, 175, 55, 0.08); /* Bordas Ultra Finas de Ouro */
+  --border-active: rgba(212, 175, 55, 0.25);
+  
+  --text-primary: #f8fafc;    /* Gelo Puro */
+  --text-secondary: #94a3b8;  /* Slate Suave */
+  --text-muted: #475569;      /* Carbono Muted */
+
+  /* Gravidade */
+  --accent-rose: #f43f5e;
+  --accent-emerald: #10b981;
+  --accent-amber: #f59e0b;
+  --accent-violet: #8b5cf6;
+}
+
+/* PALETA MODO CLARO PERGAMINHO & BRONZE — Legal Design Premium */
+.light-theme {
+  --bg-primary: #f4f6f9;       /* Cinza Mármore Judicial Claro */
+  --bg-secondary: #ffffff;     /* Branco Neve Puro */
+  --bg-card: rgba(255, 255, 255, 0.95); /* Papel Timbrado Premium */
+  
+  --color-gold: #a67c1e;       /* Ouro/Bronze de Alto Contraste */
+  --color-gold-hover: #805c10;
+  --color-gold-glow: rgba(166, 124, 30, 0.1);
+  
+  --accent-cyan: #0891b2;      /* Ciano Escurecido para Contraste */
+  --accent-cyan-glow: rgba(8, 145, 178, 0.1);
+  
+  --border-color: rgba(166, 124, 30, 0.16); /* Bordas Ouro sobre Papel */
+  --border-active: rgba(166, 124, 30, 0.35);
+  
+  --text-primary: #0f172a;     /* Preto Carbono */
+  --text-secondary: #334155;   /* Slate Escuro */
+  --text-muted: #64748b;       /* Slate Suave */
+
+  --accent-rose: #e11d48;
+  --accent-emerald: #059669;
+  --accent-amber: #d97706;
+  --accent-violet: #6d28d9;
+}
+
+/* CLASSES DE TEXTO ADAPTATIVAS PARA TEMA CLARO/ESCURO */
+.text-theme-primary {
+  color: var(--text-primary) !important;
+}
+
+.text-theme-secondary {
+  color: var(--text-secondary) !important;
+}
+
+.text-theme-muted {
+  color: var(--text-muted) !important;
+}
+
+/* Classe utilitária para manter texto branco em caixas escuras fixas (ex: tooltips, popups) */
+.force-white {
+  color: #ffffff !important;
+}
+
+/* TRANSIÇÃO SUAVE PARA ALTERAÇÃO DE TEMA (Movimento de Transição) */
+body, .glass-card, header, footer, .donna-input, .donna-btn-outline, 
+.ai-pulse-container, path, circle, span, h1, h2, h3, a, select, textarea, button {
+  transition: background-color 0.4s ease, border-color 0.4s ease, color 0.4s ease, box-shadow 0.4s ease, opacity 0.4s ease;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* TIPOGRAFIA EDITORIAL HARVEY AI */
+h1, h2, h3, .legal-title {
+  font-family: 'Lora', serif;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.supreme-font {
+  font-family: 'Cinzel', serif;
+  letter-spacing: 0.12em;
+}
+
+/* FUNDO COGNITIVO COM NEVOAS DE LUZ (Glow Patina) */
+.bg-gradient {
+  background: radial-gradient(circle at 50% 0%, rgba(212, 175, 55, 0.03) 0%, transparent 50%),
+              radial-gradient(circle at 5% 20%, rgba(6, 182, 212, 0.02) 0%, transparent 35%);
+}
+
+.light-theme .bg-gradient {
+  background: radial-gradient(circle at 50% 0%, rgba(166, 124, 30, 0.03) 0%, transparent 60%),
+              radial-gradient(circle at 5% 20%, rgba(8, 145, 178, 0.02) 0%, transparent 40%);
+}
+
+/* NAVEGAÇÃO HARVEY COGNITIVE LABS */
+.glass-nav {
+  background: var(--bg-primary);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: 0 4px 40px rgba(0, 0, 0, 0.6);
+}
+
+.light-theme .glass-nav {
+  box-shadow: 0 2px 25px rgba(166, 124, 30, 0.06);
+}
+
+.logo-text {
+  font-family: 'Cinzel', serif;
+  font-weight: 900;
+  font-size: 1.45rem;
+  letter-spacing: 0.22em;
+  background: linear-gradient(135deg, var(--text-primary) 40%, var(--color-gold) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 10px var(--color-gold-glow));
+}
+
+.logo-badge {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 0.55rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  background: rgba(6, 182, 212, 0.08);
+  color: var(--accent-cyan);
+  padding: 0.2rem 0.5rem;
+  border-radius: 2px;
+  border: 1px solid rgba(6, 182, 212, 0.25);
+  box-shadow: 0 0 10px var(--accent-cyan-glow);
+}
+
+.light-theme .logo-badge {
+  background: rgba(8, 145, 178, 0.06);
+  border-color: rgba(8, 145, 178, 0.2);
+  box-shadow: none;
+}
+
+.nav-link {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: 0.4rem 0.8rem;
+  border-radius: 2px;
+}
+
+.nav-link:hover {
+  color: var(--color-gold);
+  background: rgba(212, 175, 55, 0.04);
+}
+
+.light-theme .nav-link:hover {
+  background: rgba(166, 124, 30, 0.03);
+}
+
+.avatar {
+  width: 2rem;
+  height: 2rem;
+  background: linear-gradient(135deg, var(--bg-secondary), var(--bg-primary));
+  color: var(--color-gold);
+  font-weight: 800;
+  font-size: 0.7rem;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 0 8px var(--color-gold-glow);
+}
+
+/* CARDS OBSIDIANA & PAPEL TIMBRADO */
+.glass-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 1.5rem;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+  position: relative;
+}
+
+.light-theme .glass-card {
+  box-shadow: 0 10px 30px rgba(166, 124, 30, 0.04), 
+              0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.glass-card:hover {
+  border-color: var(--border-active);
+  box-shadow: 0 25px 60px rgba(212, 175, 55, 0.05),
+              0 0 25px rgba(6, 182, 212, 0.02);
+}
+
+.light-theme .glass-card:hover {
+  box-shadow: 0 15px 40px rgba(166, 124, 30, 0.07);
+}
+
+.glass-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 100%;
+  background: linear-gradient(180deg, var(--color-gold), transparent);
+  opacity: 0.3;
+}
+
+.glass-footer {
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border-color);
+}
+
+/* INDICADORES PULSANTES COGNITIVOS */
+.ai-pulse-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(6, 182, 212, 0.04);
+  border: 1px solid rgba(6, 182, 212, 0.15);
+  padding: 0.4rem 0.8rem;
+  border-radius: 3px;
+}
+
+.ai-pulse-ring {
+  width: 0.45rem;
+  height: 0.45rem;
+  background: var(--accent-cyan);
+  border-radius: 50%;
+  box-shadow: 0 0 0 0 rgba(6, 182, 212, 0.7);
+  animation: pulse-ring 1.8s infinite;
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(6, 182, 212, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(6, 182, 212, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(6, 182, 212, 0);
+  }
+}
+
+/* SISTEMA DE GRIDS DOS STATS */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+@media (max-width: 1024px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* STATS CARDS CONCISOS E COMPACTOS */
+.stat-card {
+  border-left: 2px solid var(--color-gold);
+  height: 80px;
+  padding: 0.75rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+}
+
+.stat-value {
+  font-family: 'Lora', serif;
+  font-size: 1.75rem;
+  font-weight: 500;
+  color: var(--color-gold);
+  line-height: 1;
+  margin-top: 0.15rem;
+  text-shadow: 0 0 10px var(--color-gold-glow);
+}
+
+.light-theme .stat-value {
+  text-shadow: none;
+}
+
+.stat-title {
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  line-height: 1;
+}
+
+/* LIVE SVG SPARKLINE ANIMATION */
+.sparkline-svg {
+  overflow: visible;
+  filter: drop-shadow(0 0 4px var(--accent-cyan-glow));
+}
+
+.light-theme .sparkline-svg {
+  filter: none;
+}
+
+.sparkline-path {
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: draw-sparkline 2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes draw-sparkline {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* MAIN INTERACTIVE CHART GRADIENT & ANIMATIONS */
+.chart-path-main {
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
+  animation: draw-main-chart 2.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.chart-area-main {
+  opacity: 0;
+  animation: fade-in-area 1.5s ease-out 1.2s forwards;
+}
+
+@keyframes draw-main-chart {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes fade-in-area {
+  to {
+    opacity: 0.06;
+  }
+}
+
+/* DRAG & DROP DOCKET WIDGET (Harvey Upload Zone) */
+.docket-upload-zone {
+  border: 1px dashed var(--border-color);
+  background: rgba(212, 175, 55, 0.005);
+  border-radius: 3px;
+  padding: 1.5rem;
+  text-align: center;
+  cursor: pointer;
+}
+
+.docket-upload-zone:hover {
+  border-color: var(--color-gold);
+  background: rgba(212, 175, 55, 0.02);
+}
+
+.light-theme .docket-upload-zone:hover {
+  background: rgba(166, 124, 30, 0.02);
+}
+
+/* COGNITIVE CPC TIMELINE DIAGRAM */
+.timeline-cpc {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 2rem 0;
+  position: relative;
+}
+
+.timeline-cpc::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 3%;
+  width: 94%;
+  height: 1px;
+  background: linear-gradient(90deg, var(--border-color), var(--color-gold), var(--border-color));
+  z-index: 1;
+}
+
+.timeline-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  z-index: 2;
+  background: var(--bg-secondary);
+  padding: 0.35rem 0.75rem;
+  border-radius: 2px;
+  border: 1px solid var(--border-color);
+}
+
+.timeline-step.active {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 12px var(--accent-cyan-glow);
+}
+
+.light-theme .timeline-step.active {
+  box-shadow: none;
+}
+
+.step-circle {
+  width: 1.5rem;
+  height: 1.5rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6rem;
+  font-weight: 800;
+  color: var(--text-secondary);
+}
+
+.timeline-step.active .step-circle {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  background: var(--bg-secondary);
+  box-shadow: 0 0 10px var(--accent-cyan-glow);
+}
+
+.light-theme .timeline-step.active .step-circle {
+  box-shadow: none;
+}
+
+.step-label {
+  font-size: 0.55rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: 0.45rem;
+  color: var(--text-muted);
+}
+
+.timeline-step.active .step-label {
+  color: var(--accent-cyan);
+}
+
+/* FILA DE DIÁRIOS & PRAZOS HARVEY STYLE */
+.deadline-item {
+  border: 1px solid var(--border-color);
+  border-left: 2px solid var(--color-gold);
+  background: rgba(255, 255, 255, 0.003);
+  border-radius: 2px;
+  padding: 1.5rem;
+}
+
+.deadline-item:hover {
+  background: rgba(6, 182, 212, 0.01);
+  border-color: rgba(6, 182, 212, 0.25);
+  transform: translateX(3px);
+}
+
+.deadline-item.urgente {
+  border-left-color: var(--accent-rose);
+}
+
+.deadline-item.alta {
+  border-left-color: var(--accent-amber);
+}
+
+.badge {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 0.2rem 0.5rem;
+  border-radius: 2px;
+  text-transform: uppercase;
+}
+
+.badge.urgente {
+  background: rgba(244, 63, 94, 0.06);
+  color: #fda4af;
+  border: 1px solid rgba(244, 63, 94, 0.2);
+}
+
+.light-theme .badge.urgente {
+  color: var(--accent-rose);
+}
+
+.badge.alta {
+  background: rgba(245, 158, 11, 0.06);
+  color: #fde047;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.light-theme .badge.alta {
+  color: var(--accent-amber);
+}
+
+.badge.media {
+  background: rgba(6, 182, 212, 0.06);
+  color: #a5f3fc;
+  border: 1px solid rgba(6, 182, 212, 0.2);
+}
+
+.light-theme .badge.media {
+  color: var(--accent-cyan);
+}
+
+.badge.concluido {
+  background: rgba(16, 185, 129, 0.06);
+  color: #a7f3d0;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.light-theme .badge.concluido {
+  color: var(--accent-emerald);
+}
+
+/* CHAT TERMINAL FLUTUANTE (Harvey Assistant Console) */
+.message-bubble {
+  max-width: 82%;
+  padding: 1.5rem;
+  border-radius: 2px;
+  line-height: 1.65;
+  font-size: 0.9rem;
+}
+
+.message-bubble.assistant {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-left: 2px solid var(--color-gold);
+  color: var(--text-secondary);
+}
+
+.message-bubble.assistant strong {
+  color: var(--text-primary);
+  font-family: 'Lora', serif;
+}
+
+.message-bubble.user {
+  background: rgba(6, 182, 212, 0.04);
+  border: 1px solid rgba(6, 182, 212, 0.18);
+  color: var(--text-primary);
+  border-right: 2px solid var(--accent-cyan);
+}
+
+.light-theme .message-bubble.user {
+  background: rgba(166, 124, 30, 0.03);
+  border-color: rgba(166, 124, 30, 0.15);
+}
+
+/* COGNITIVE METERS */
+.cognitive-meter-container {
+  margin: 1rem 0;
+}
+
+.cognitive-meter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-bottom: 0.35rem;
+}
+
+.cognitive-meter-track {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.light-theme .cognitive-meter-track {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.cognitive-meter-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-gold), var(--accent-cyan));
+  box-shadow: 0 0 10px var(--accent-cyan-glow);
+}
+
+.light-theme .cognitive-meter-bar {
+  box-shadow: none;
+}
+
+/* FLOATING PROMPT CAPSULE */
+.floating-prompt-capsule {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.6);
+}
+
+.light-theme .floating-prompt-capsule {
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+}
+
+.floating-prompt-capsule:focus-within {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 15px rgba(6, 182, 212, 0.15);
+}
+
+/* INPUTS E BOTÕES HARVEY PLATINUM */
+.donna-input {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  padding: 0.75rem 1rem;
+  outline: none;
+  font-size: 0.88rem;
+  width: 100%;
+}
+
+.donna-btn {
+  background: linear-gradient(135deg, var(--color-gold) 0%, var(--color-gold-hover) 100%);
+  color: var(--bg-primary);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+  border: none;
+  border-radius: 2px;
+  padding: 0.65rem 1.5rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  box-shadow: 0 4px 15px var(--color-gold-glow);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.light-theme .donna-btn {
+  color: #fff;
+  box-shadow: none;
+}
+
+.donna-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.donna-btn:active {
+  transform: translateY(0px);
+}
+
+.donna-btn-outline {
+  background: transparent;
+  color: var(--color-gold);
+  border: 1px solid var(--color-gold);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+  border-radius: 2px;
+  padding: 0.65rem 1.5rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.donna-btn-outline:hover {
+  background: rgba(212, 175, 55, 0.04);
+}
+
+.light-theme .donna-btn-outline:hover {
+  background: rgba(166, 124, 30, 0.03);
+}
+
+/* BOTÃO DE ALTERAÇÃO DE TEMA (Theme Toggle Button) */
+.theme-toggle-btn {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--color-gold);
+  padding: 0.4rem;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.theme-toggle-btn:hover {
+  background: rgba(197, 168, 128, 0.05);
+  border-color: var(--color-gold);
+}
