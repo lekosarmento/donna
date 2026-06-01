@@ -7,6 +7,20 @@ Built with a **deterministic regulatory engine** and a **resilient hybrid databa
 
 ---
 
+## Visual Cockpit & Features
+
+Here is a visual overview of the high-fidelity Donna interface and core functionalities:
+
+| Cockpit Estratégico (Dashboard) | Psicologia de Julgadores (Perfis) |
+| :---: | :---: |
+| ![Cockpit Estratégico](assets/dashboard_cockpit.png) | ![Magistrate Profiling](assets/behavioral_profiling.png) |
+
+| Donna Chat RAG Console (Assistant) | Deterministic Timeline (Motor de Prazos) |
+| :---: | :---: |
+| ![Donna Chat Console](assets/cognitive_chat_ui.png) | ![Deadline Timeline](assets/deterministic_timeline.png) |
+
+---
+
 ## Key Architectural Features
 
 *   **Motor 3: Timezone-Locked Procedural Deadline Engine:** Evaluates calculated deadlines under strict CPC/15 and CNJ Resolutions 455/2022 and 569/2024. Implements precise calculations for DJEN, Domicílio Eletrônico (5th business day citação), 10 calendar days tacit service window, and automatic blocking + high-risk warnings for PJ Private citação inertia (avoiding the 5% fine under Art. 246, §1º-C).
