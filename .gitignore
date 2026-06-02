@@ -48,3 +48,10 @@ obj/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# PJe Integration Exclusions
+*.pfx
+*.p12
+*.env.donna
+certs/
+

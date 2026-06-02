@@ -8,6 +8,10 @@ import webhookRoutes from './routes/webhookRoutes.js';
 import processoRoutes from './routes/processoRoutes.js';
 import prazoRoutes from './routes/prazoRoutes.js';
 import donnaRoutes from './routes/donnaRoutes.js';
+import pjeChatRoutes from './routes/pjeChatRoutes.js';
+import monitoringRoutes from './monitoring/health.js';
+
+
 
 dotenv.config();
 
@@ -49,6 +53,10 @@ export function buildApp() {
   fastify.register(processoRoutes);
   fastify.register(prazoRoutes);
   fastify.register(donnaRoutes);
+  fastify.register(pjeChatRoutes);
+  fastify.register(monitoringRoutes);
+
+
 
   return fastify;
 }
