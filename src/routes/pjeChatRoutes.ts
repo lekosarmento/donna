@@ -2,12 +2,11 @@ import { FastifyInstance, FastifyPluginOptions } from 'fastify';
 import { z } from 'zod';
 import { MCPBridge } from '../services/pje/mcp-bridge.js';
 import { PjeService } from '../services/pje/pje-service.js';
-import { DonnaAgent } from '../ai/donna-agent.js';
+import { DonnaAgent, AgentEvent } from '../ai/donna-agent.js';
 import { ContextBuilder } from '../ai/context-builder.js';
 import { pjeConfig } from '../config/pje-config.js';
 import { CertificateVault } from '../security/certificate-vault.js';
 
-// Inicialização singleton da ponte MCP e do serviço
 let bridge: MCPBridge | null = null;
 let pjeService: PjeService | null = null;
 
@@ -16,7 +15,6 @@ const chatRequestSchema = z.object({
   message: z.string()
     .min(1, { message: 'Mensagem não pode ser vazia.' })
     .max(2000, { message: 'Limite de caracteres excedido (máx 2000).' })
-    // Higienização de caracteres de controle para mitigar injeção de prompt
     .transform(val => val.replace(/[\u0000-\u001F\u007F-\u009F]/g, '')),
   sessionId: z.string().min(1, { message: 'ID da sessão é obrigatório.' }),
   userId: z.string().min(1, { message: 'ID do usuário/operador é obrigatório.' }),
@@ -27,9 +25,7 @@ const chatRequestSchema = z.object({
  */
 export default async function pjeChatRoutes(fastify: FastifyInstance, options: FastifyPluginOptions) {
   
-  // Garantir a conexão da ponte no boot das rotas
   if (!bridge) {
-    // 1. Inicializar cofre de certificados em memória
     try {
       await CertificateVault.getInstance().initialize(
         pjeConfig.PJE_CERTIFICATE_PFX_PATH,
@@ -40,7 +36,6 @@ export default async function pjeChatRoutes(fastify: FastifyInstance, options: F
       fastify.log.error(`[Vault Startup] Falha ao carregar certificado no cofre criptografado: ${errMsg}`);
     }
 
-    // 2. Inicializar ponte e serviço
     bridge = new MCPBridge();
     bridge.connect().catch(err => {
       fastify.log.error(`[PJe Startup] Falha crítica de conexão StdIO MCP: ${err.message}`);
@@ -50,7 +45,7 @@ export default async function pjeChatRoutes(fastify: FastifyInstance, options: F
 
   /**
    * POST /api/donna/chat
-   * Endpoint de chat em tempo real com streaming (Server-Sent Events - SSE).
+   * Endpoint de chat em tempo real com streaming Server-Sent Events (SSE).
    */
   fastify.post('/api/donna/chat', async (request, reply) => {
     const correlationId = request.headers['x-correlation-id'] as string || `CHAT-${Date.now()}`;
@@ -63,54 +58,81 @@ export default async function pjeChatRoutes(fastify: FastifyInstance, options: F
     }
 
     const { message, sessionId, userId } = bodyParse.data;
-
-    // 2. Telemetria e Auditoria inicial (SIEM-ready)
-    const toolsCalledList: string[] = [];
     const startTime = Date.now();
+    const toolsCalledList: string[] = [];
 
-    // 3. Montar contexto de conversação usando sliding window
+    // 2. Inicializar agentes e utilitários
     const contextBuilder = new ContextBuilder();
     const history = contextBuilder.buildConversationHistory([
       { role: 'user', content: message }
     ]);
 
-    // 4. Inicializar agente Donna para a chamada ativa
     const agent = new DonnaAgent(pjeService!);
 
-    // Configurar cabeçalhos para o streaming Server-Sent Events (SSE)
+    // Configurar cabeçalhos obrigatórios para o streaming SSE
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
-      'X-Accel-Buffering': 'no', // Evita buffering de proxies reversos como Nginx
+      'X-Accel-Buffering': 'no',
     });
 
+    // 3. Heartbeat (Ping) a cada 15 segundos para manter o canal TCP/SSE aberto
+    const heartbeatInterval = setInterval(() => {
+      reply.raw.write(`data: ${JSON.stringify({ type: 'ping' })}\n\n`);
+    }, 15000);
+
+    // 4. Timeout de Segurança de 120 segundos para evitar requisições presas (exaustão de sockets)
+    const executionTimeout = setTimeout(() => {
+      clearInterval(heartbeatInterval);
+      agent.abortActiveRequest(); // Cancelar chamada de API Anthropic de forma graciosa
+
+      const timeoutMsg = 'Limite de tempo esgotado na geração da resposta pela Donna (120s).';
+      reply.raw.write(`data: ${JSON.stringify({ type: 'error', message: timeoutMsg })}\n\n`);
+      reply.raw.end();
+
+      console.error(JSON.stringify({
+        level: 'error',
+        timestamp: new Date().toISOString(),
+        correlationId,
+        type: 'CHAT_TIMEOUT',
+        userId,
+        sessionId,
+        message: 'Tempo limite de execução excedido (120s) - Stream abortado.'
+      }));
+    }, 120000);
+
+    // Limpeza dos timers e listeners ao finalizar
+    const cleanup = () => {
+      clearInterval(heartbeatInterval);
+      clearTimeout(executionTimeout);
+    };
+
     try {
-      // Escutar eventos da bridge para capturar chamadas de ferramentas durante o ciclo do agente
+      // 5. Escutar eventos de tool_result da ponte para auditoria de segurança
       const onToolResult = (data: any) => {
-        toolsCalledList.push(`tool_call_${Date.now()}`);
+        toolsCalledList.push(data.tool || 'pje_mcp_tool');
       };
       bridge!.on('tool_result', onToolResult);
 
-      // Executa o agente cognitivo no loop e envia chunks pelo canal raw do Fastify
-      await agent.executeChat(
-        history, 
-        userId, 
-        correlationId, 
-        (chunk: string) => {
-          reply.raw.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+      // 6. Executar o Agente IA em loop com streaming SSE nativo
+      await agent.executeChatStream(
+        history,
+        userId,
+        correlationId,
+        (event: AgentEvent) => {
+          // Escrever cada frame JSON na linha SSE
+          reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
         }
       );
 
-      // Limpar listener para evitar memory leak
+      // Limpar ponte ao finalizar turn
       bridge!.off('tool_result', onToolResult);
-
-      // Notificar término do stream
-      reply.raw.write(`data: [DONE]\n\n`);
+      cleanup();
       reply.raw.end();
 
-      // 5. Auditoria de encerramento da requisição (Sem vazar dados pessoais nos logs)
-      const auditLog = {
+      // Auditoria SIEM estruturada
+      console.log(JSON.stringify({
         level: 'info',
         timestamp: new Date().toISOString(),
         correlationId,
@@ -120,14 +142,17 @@ export default async function pjeChatRoutes(fastify: FastifyInstance, options: F
         executionTimeMs: Date.now() - startTime,
         toolsCalled: toolsCalledList,
         result: 'SUCCESS'
-      };
-      console.log(JSON.stringify(auditLog));
+      }));
 
     } catch (error) {
+      cleanup();
       const errMsg = error instanceof Error ? error.message : String(error);
-      
-      // Registrar log estruturado de erro na telemetria
-      const errorLog = {
+
+      // Emitir evento de erro no stream SSE e fechar a conexão
+      reply.raw.write(`data: ${JSON.stringify({ type: 'error', message: errMsg })}\n\n`);
+      reply.raw.end();
+
+      console.error(JSON.stringify({
         level: 'error',
         timestamp: new Date().toISOString(),
         correlationId,
@@ -136,12 +161,7 @@ export default async function pjeChatRoutes(fastify: FastifyInstance, options: F
         sessionId,
         error: errMsg,
         result: 'FAILED'
-      };
-      console.error(JSON.stringify(errorLog));
-
-      // Notificar o cliente SSE do erro operacional ocorrido
-      reply.raw.write(`data: ${JSON.stringify({ error: errMsg })}\n\n`);
-      reply.raw.end();
+      }));
     }
   });
 }

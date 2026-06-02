@@ -9,9 +9,16 @@ export interface AgentOptions {
   temperature?: number;
 }
 
+export type AgentEvent =
+  | { type: 'token'; content: string }
+  | { type: 'thinking'; tool: string }
+  | { type: 'tool_done'; tool: string; ms: number }
+  | { type: 'done'; usage: { input_tokens: number; output_tokens: number } }
+  | { type: 'error'; message: string };
+
 /**
  * Agente cognitivo Donna. Orquestra a execução de ferramentas no PJe MCP Server
- * e mantém a integridade das respostas utilizando a API da Anthropic.
+ * e emite eventos estruturados de streaming para o cliente Next.js.
  */
 export class DonnaAgent {
   private client: Anthropic;
@@ -19,7 +26,8 @@ export class DonnaAgent {
   private model: string;
   private maxTokens: number;
   private temperature: number;
-  private maxIterations = 10; // Proteção contra loops infinitos de IA
+  private maxIterations = 10;
+  private activeStream: any = null; // Guarda referência do stream ativo para abortar
 
   private readonly SYSTEM_PROMPT = `Você é a "Donna", a secretária e copiloto jurídica estratégica do escritório.
 Inspirada na personagem Donna Paulsen de Suits: você é extremamente inteligente, perspicaz, autoconfiante, leal e antecipa as necessidades dos advogados antes mesmo de eles perceberem.
@@ -30,7 +38,7 @@ DIRETRIZES DE COMPORTAMENTO E SEGURANÇA:
 2. Jamais invente ou alucine informações processuais. Se um processo não for localizado no PJe, diga claramente.
 3. Ao responder sobre processos, use sempre uma linguagem profissional e técnica, mas adote o tom confiante da persona da Donna.
 4. Respeite as regras de segredo de justiça e LGPD: nunca vaze CPFs completos nas conversas, mas informe andamentos.
-5. Recomende ações proativas baseadas nas informações consultadas (ex: "Como o prazo está correndo, prepare a petição de contestação hoje").`;
+5. Recomende ações proativas baseadas nas informações consultadas.`;
 
   constructor(pjeService: PjeService, options?: AgentOptions) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -41,70 +49,108 @@ DIRETRIZES DE COMPORTAMENTO E SEGURANÇA:
     this.pjeService = pjeService;
     this.model = options?.model || 'claude-3-5-sonnet-20241022';
     this.maxTokens = options?.maxTokens || 4000;
-    this.temperature = options?.temperature || 0.2; // Baixa temperatura para maior precisão jurídica
+    this.temperature = options?.temperature || 0.2;
+  }
+
+  /**
+   * Cancela graciosamente qualquer conexão de stream ativa com a Anthropic.
+   */
+  public abortActiveRequest(): void {
+    if (this.activeStream) {
+      try {
+        this.activeStream.abort();
+        this.logStructured('info', 'Solicitação de stream da Anthropic cancelada graciosamente.');
+      } catch (err) {
+        this.logStructured('warn', 'Erro ao abortar stream ativo:', { error: String(err) });
+      } finally {
+        this.activeStream = null;
+      }
+    }
   }
 
   /**
    * Executa a interação conversacional completa com suporte a loops agentics (tool-use)
-   * e streams a resposta de linguagem natural final para o cliente.
+   * e emite eventos estruturados de progresso (SSE) em tempo real.
    * 
    * @param {ChatMessage[]} history Histórico de conversas formatado.
    * @param {string} operadorId ID de identificação do advogado para fins de auditoria.
    * @param {string} correlationId ID de correlação para logs estruturados.
-   * @param {(chunk: string) => void} onChunk Callback acionada a cada pedaço da resposta de texto final gerada.
+   * @param {(event: AgentEvent) => void} onEvent Callback que despacha os eventos estruturados de progresso do agente.
    * @returns {Promise<string>} Resposta final em texto completo.
    */
-  public async executeChat(
+  public async executeChatStream(
     history: ChatMessage[],
     operadorId: string,
     correlationId: string,
-    onChunk: (chunk: string) => void
+    onEvent: (event: AgentEvent) => void
   ): Promise<string> {
-    // 1. Mapeamento dinâmico de tools compatíveis com o Anthropic SDK
     const tools = Object.values(PJE_MCP_TOOLS).map(tool => ({
       name: tool.name,
       description: tool.description,
       input_schema: tool.input_schema
     }));
 
-    // Converter mensagens para o formato da Anthropic
     const messages: Anthropic.MessageParam[] = history.map(msg => ({
       role: msg.role,
       content: msg.content
     }));
 
     let currentIteration = 0;
+    let accumulatedText = '';
 
     while (currentIteration < this.maxIterations) {
       currentIteration++;
       this.logStructured('debug', `Executando iteração de IA do Agente: ${currentIteration}/${this.maxIterations}`, { correlationId });
 
       try {
-        // Enviar mensagens e obter resposta da IA (com suporte a chamadas de ferramentas)
-        const response = await this.client.messages.create({
-          model: this.model,
-          max_tokens: this.maxTokens,
-          temperature: this.temperature,
-          system: this.SYSTEM_PROMPT,
-          messages: messages,
-          tools: tools,
+        // Obter stream ativo a partir do SDK da Anthropic
+        const streamPromise = new Promise<Anthropic.Message>((resolve, reject) => {
+          const stream = this.client.messages.stream({
+            model: this.model,
+            max_tokens: this.maxTokens,
+            temperature: this.temperature,
+            system: this.SYSTEM_PROMPT,
+            messages: messages,
+            tools: tools,
+          });
+
+          this.activeStream = stream;
+
+          stream.on('text', (text) => {
+            accumulatedText += text;
+            onEvent({ type: 'token', content: text });
+          });
+
+          stream.on('message', (message) => {
+            resolve(message);
+          });
+
+          stream.on('error', (err) => {
+            reject(err);
+          });
         });
 
-        // Adiciona a mensagem do assistente ao histórico acumulado
+        const messageResponse = await streamPromise;
+        this.activeStream = null;
+
+        // Adiciona a mensagem gerada ao histórico
         messages.push({
           role: 'assistant',
-          content: response.content
+          content: messageResponse.content
         });
 
-        // Se a resposta for para usar alguma ferramenta
-        if (response.stop_reason === 'tool_use') {
+        // Caso a IA necessite chamar alguma ferramenta no PJe
+        if (messageResponse.stop_reason === 'tool_use') {
           const toolResults: Anthropic.Beta.Prompting.ToolResultBlockParam[] = [];
 
-          for (const block of response.content) {
+          for (const block of messageResponse.content) {
             if (block.type === 'tool_use') {
               const toolUseId = block.id;
               const toolName = block.name;
               const toolArgs = block.input as any;
+
+              // Emitir início do processamento da ferramenta
+              onEvent({ type: 'thinking', tool: toolName });
 
               this.logStructured('info', `Executando chamada de ferramenta pela IA: ${toolName}`, {
                 toolName,
@@ -112,10 +158,11 @@ DIRETRIZES DE COMPORTAMENTO E SEGURANÇA:
                 correlationId
               });
 
+              const startTime = Date.now();
+
               try {
                 let result: any;
                 
-                // Mapeia e executa a chamada no PjeService
                 if (toolName === 'pje_buscar_processo') {
                   result = await this.pjeService.buscarProcesso(toolArgs.id, operadorId, correlationId);
                 } else if (toolName === 'pje_listar_processos') {
@@ -126,6 +173,11 @@ DIRETRIZES DE COMPORTAMENTO E SEGURANÇA:
                   throw new Error(`Ferramenta MCP desconhecida no Agente Donna: ${toolName}`);
                 }
 
+                const elapsedMs = Date.now() - startTime;
+                
+                // Emitir sucesso da ferramenta e o tempo de execução
+                onEvent({ type: 'tool_done', tool: toolName, ms: elapsedMs });
+
                 toolResults.push({
                   type: 'tool_result',
                   tool_use_id: toolUseId,
@@ -133,12 +185,17 @@ DIRETRIZES DE COMPORTAMENTO E SEGURANÇA:
                 });
 
               } catch (toolError) {
+                const elapsedMs = Date.now() - startTime;
                 const errMsg = toolError instanceof Error ? toolError.message : String(toolError);
+                
                 this.logStructured('error', `Erro na execução da ferramenta MCP: ${toolName}`, {
                   toolName,
                   error: errMsg,
                   correlationId
                 });
+
+                // Emitir conclusão com erro para a UI
+                onEvent({ type: 'tool_done', tool: toolName, ms: elapsedMs });
 
                 toolResults.push({
                   type: 'tool_result',
@@ -150,37 +207,32 @@ DIRETRIZES DE COMPORTAMENTO E SEGURANÇA:
             }
           }
 
-          // Adicionar o resultado das ferramentas ao histórico como uma mensagem do usuário
+          // Alimentar histórico com o resultado para a próxima inferência do Claude
           messages.push({
             role: 'user',
             content: toolResults as any
           });
 
-          // Continua o loop para que a IA analise as respostas das ferramentas
           continue;
         }
 
-        // Se a IA completou a geração da resposta textual final
-        if (response.stop_reason === 'end_turn') {
-          const textBlock = response.content.find(block => block.type === 'text');
-          const textResponse = textBlock && textBlock.type === 'text' ? textBlock.text : '';
-          
-          // Como fizemos a chamada sem stream para resolver as ferramentas, simulamos o stream
-          // do texto final para o cliente SSE para manter a UX rápida
-          const chunkSize = 15; // caracteres
-          for (let i = 0; i < textResponse.length; i += chunkSize) {
-            const chunk = textResponse.substring(i, i + chunkSize);
-            onChunk(chunk);
-            // Pequeno delay para emular stream natural
-            await new Promise(resolve => setTimeout(resolve, 10));
-          }
+        // Caso a iteração do loop tenha finalizado normalmente
+        if (messageResponse.stop_reason === 'end_turn' || messageResponse.stop_reason === 'stop_sequence') {
+          onEvent({
+            type: 'done',
+            usage: {
+              input_tokens: messageResponse.usage.input_tokens,
+              output_tokens: messageResponse.usage.output_tokens
+            }
+          });
 
-          return textResponse;
+          return accumulatedText;
         }
 
-        throw new Error(`Stop reason não suportado do Anthropic SDK: ${response.stop_reason}`);
+        throw new Error(`Stop reason inesperado do Anthropic SDK: ${messageResponse.stop_reason}`);
 
       } catch (error) {
+        this.activeStream = null;
         this.handleAnthropicErrors(error, correlationId);
       }
     }
