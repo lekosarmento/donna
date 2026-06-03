@@ -83,7 +83,8 @@ export default async function processoRoutes(fastify, options) {
             cliente_id,
             advogado_responsavel_id: advogado_responsavel_id || null,
             prioridade: prioridade || 'media',
-            observacoes: observacoes || null
+            observacoes: observacoes || null,
+            escritorio_id: request.user.escritorio_id
           })
           .select('*')
           .single();
@@ -112,6 +113,7 @@ export default async function processoRoutes(fastify, options) {
         prioridade: prioridade || 'media',
         status: 'ativo',
         observacoes: observacoes || null,
+        escritorio_id: request.user.escritorio_id,
         created_at: new Date().toISOString()
       };
 
@@ -148,6 +150,7 @@ export default async function processoRoutes(fastify, options) {
             clientes (id, nome),
             usuarios (id, nome)
           `)
+          .eq('escritorio_id', request.user.escritorio_id)
           .order('created_at', { ascending: false });
 
         if (!error && data && data.length > 0) {
@@ -159,7 +162,9 @@ export default async function processoRoutes(fastify, options) {
 
       // Fallback: carregar lista local
       const processosLocais = await carregarDadosLocais(PROCESSOS_FILE_PATH);
-      const output = processosLocais.map(p => ({
+      const output = processosLocais
+        .filter(p => p.escritorio_id === request.user.escritorio_id)
+        .map(p => ({
         id: p.id,
         numero_cnj: p.numero_cnj,
         tribunal: p.tribunal,
@@ -188,7 +193,7 @@ export default async function processoRoutes(fastify, options) {
 
     if (String(id).startsWith('local-proc-')) {
       const processos = await carregarDadosLocais(PROCESSOS_FILE_PATH);
-      const proc = processos.find(p => p.id === id);
+      const proc = processos.find(p => p.id === id && p.escritorio_id === request.user.escritorio_id);
       if (proc) {
         return reply.send({
           ...proc,
@@ -212,12 +217,13 @@ export default async function processoRoutes(fastify, options) {
           atores_judiciario (*)
         `)
         .eq('id', id)
+        .eq('escritorio_id', request.user.escritorio_id)
         .single();
 
       if (procError || !processo) {
         // Se falhou no banco, verifica se existe localmente
         const processos = await carregarDadosLocais(PROCESSOS_FILE_PATH);
-        const proc = processos.find(p => p.id === id);
+        const proc = processos.find(p => p.id === id && p.escritorio_id === request.user.escritorio_id);
         if (proc) {
           return reply.send({
             ...proc,

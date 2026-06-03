@@ -20,6 +20,112 @@ export interface AuditRecord {
 export class LgpdHandler {
   
   /**
+   * Classifica o nível de sigilo processual com base no Art. 189 do CPC e LGPD.
+   */
+  public static classificarSigilo(processo: any): { 
+    nivel: 'publico' | 'restrito' | 'segredo'; 
+    fundamentacao: string; 
+    artigo: string; 
+  } {
+    // 1. Detectar pelo campo segredoJustica da API do PJe
+    if (processo.segredoJustica === true) {
+      return {
+        nivel: 'segredo',
+        fundamentacao: 'Processo classificado expressamente como Segredo de Justiça pelo barramento eletrônico do tribunal.',
+        artigo: 'Artigo 189, inciso IV, da Lei nº 13.105/2015 (CPC)'
+      };
+    }
+
+    const classeLower = (processo.classe || '').toLowerCase();
+    const assuntoLower = (processo.assunto || '').toLowerCase();
+    const orgaoLower = (processo.orgaoJulgador || '').toLowerCase();
+    const numeroClasse = parseInt(processo.classeId || processo.classeCode || '0', 10);
+    
+    // 2. Detectar pelas classes processuais CNJ (família, divórcio, alimentos, guarda, adoção)
+    const classesFamiliaCnj = [1116, 1117, 1118, 1121, 1122, 1125, 1126, 1127, 1128];
+    const isFamiliaCode = classesFamiliaCnj.includes(numeroClasse);
+
+    const isFamiliaText = 
+      classeLower.includes('divórcio') || 
+      classeLower.includes('divorcio') ||
+      classeLower.includes('guarda') ||
+      classeLower.includes('alimentos') ||
+      classeLower.includes('adoção') ||
+      classeLower.includes('adopcao') ||
+      classeLower.includes('tutela') ||
+      classeLower.includes('curatela') ||
+      classeLower.includes('união estável') ||
+      classeLower.includes('uniao estavel') ||
+      classeLower.includes('família') ||
+      classeLower.includes('familia');
+
+    if (isFamiliaCode || isFamiliaText) {
+      return {
+        nivel: 'segredo',
+        fundamentacao: 'Processo de direito de família e/ou estado das pessoas com restrição legal de publicidade.',
+        artigo: 'Artigo 189, inciso II, da Lei nº 13.105/2015 (CPC)'
+      };
+    }
+
+    // 3. Detectar por violência doméstica (Maria da Penha)
+    if (
+      assuntoLower.includes('violência doméstica') || 
+      assuntoLower.includes('violencia domestica') ||
+      assuntoLower.includes('maria da penha') ||
+      orgaoLower.includes('violência doméstica') ||
+      orgaoLower.includes('violencia domestica')
+    ) {
+      return {
+        nivel: 'segredo',
+        fundamentacao: 'Processo envolvendo violência doméstica e familiar contra a mulher.',
+        artigo: 'Artigo 189, inciso III, da Lei nº 13.105/2015 (CPC) c/c Lei Maria da Penha'
+      };
+    }
+
+    // 4. Detectar por adoção, menor de idade ou Estatuto da Criança e do Adolescente (ECA)
+    if (
+      assuntoLower.includes('adoção') || 
+      assuntoLower.includes('adopcao') || 
+      assuntoLower.includes('estatuto da criança') || 
+      assuntoLower.includes('menor') ||
+      orgaoLower.includes('infância') ||
+      orgaoLower.includes('infancia') ||
+      orgaoLower.includes('juventude')
+    ) {
+      return {
+        nivel: 'segredo',
+        fundamentacao: 'Processo que discute interesse de menor de idade sob a égide do Estatuto da Criança e do Adolescente (ECA).',
+        artigo: 'Artigo 143 da Lei nº 8.069/1990 (ECA) c/c Artigo 189, inciso II do CPC'
+      };
+    }
+
+    // 5. Detectar por saúde mental, interdição, doença mental ou dados médicos sensíveis
+    if (
+      classeLower.includes('interdição') ||
+      classeLower.includes('interdicao') ||
+      assuntoLower.includes('saúde mental') || 
+      assuntoLower.includes('saude mental') || 
+      assuntoLower.includes('doença mental') ||
+      assuntoLower.includes('doenca mental') ||
+      assuntoLower.includes('interdição') || 
+      assuntoLower.includes('interdicao') || 
+      assuntoLower.includes('curatela')
+    ) {
+      return {
+        nivel: 'restrito',
+        fundamentacao: 'Processo contendo dados sensíveis sobre saúde mental ou capacidade civil das partes.',
+        artigo: 'Artigo 5º, inciso X, da Constituição Federal c/c Artigo 5º, inciso II, da LGPD'
+      };
+    }
+
+    return {
+      nivel: 'publico',
+      fundamentacao: 'Processo sob regime geral de publicidade dos atos processuais.',
+      artigo: 'Artigo 93, inciso IX, da Constituição Federal'
+    };
+  }
+
+  /**
    * Classifica as chaves de dados do PJe nas categorias regulatórias da LGPD.
    */
   public static classifyField(fieldName: string): LgpdCategory {

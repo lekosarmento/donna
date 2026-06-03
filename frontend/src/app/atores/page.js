@@ -1,106 +1,189 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+
+const API_BASE = "http://127.0.0.1:3000/api";
 
 export default function Atores() {
-  const [atores, setAtores] = useState([
-    {
-      id: "1",
-      nome: "Dr. João Carlos de Albuquerque",
-      tipo: "juiz",
-      cargo: "Juiz de Direito Titular",
-      tribunal: "TJPB",
-      comarca: "João Pessoa",
-      vara: "2ª Vara Cível",
-      telefone: "(83) 3216-1542",
-      email: "gab.2civel.jp@tjpb.jus.br",
-      atendimento: "13:00 às 17:00 (Melhor via e-mail direto)",
-      perfil: "legalista",
-      temperamento: "rigido",
-      estiloAudiencia: "Pontualidade britânica, exige que as partes estejam prontas 15min antes. Não tolera apartes sem permissão.",
-      preferencia: "Prefere petições curtas (máximo 5 páginas) com fundamentação literal da lei, sem excesso de doutrina ou jurisprudência.",
-      pontosPositivos: ["Extremamente técnico", "Decide rápido tutela de urgência"],
-      pontosAtencao: ["Rígido com prazos de emenda", "Indefere recursos com pequenos vícios formais"],
-      meters: [
-        { label: "Raciocínio Legalista", val: 85 },
-        { label: "Rigidez Processual", val: 90 },
-        { label: "Abertura a Acordos", val: 15 }
-      ],
-      interacoes: [
-        { data: "15/05/2026", tipo: "Despacho oral", desc: "Despachada tutela de urgência no proc. 0001234-56. Fomos recebidos em 5min. Ele deferiu a liminar com base estrita no art. 300.", resultado: "Sucesso parcial (liminar concedida com caução)" },
-        { data: "10/04/2026", tipo: "Audiência de Instrução", desc: "Muito pontual. Exigiu que as testemunhas fossem objetivas.", resultado: "Depoimentos tomados sem incidentes" }
-      ]
-    },
-    {
-      id: "2",
-      nome: "Dra. Heloísa Maria Souza",
-      tipo: "desembargadora",
-      cargo: "Desembargadora Relatora",
-      tribunal: "TJRN",
-      comarca: "Tribunal de Justiça",
-      vara: "3ª Câmara Cível",
-      telefone: "(84) 3616-2030",
-      email: "heloisa.souza@tjrn.jus.br",
-      atendimento: "Terças e quintas pela manhã (Agendar com secretário)",
-      perfil: "garantista",
-      temperamento: "flexivel",
-      estiloAudiencia: "Colaborativa, busca conciliação ativa e ouve os advogados com atenção durante sustentações orais.",
-      preferencia: "Valoriza muito precedentes vinculantes do STJ/STF e petições bem estruturadas com tabelas de fatos versus provas.",
-      pontosPositivos: ["Acessível para despacho presencial", "Sensibilidade para questões sociais"],
-      pontosAtencao: ["Prazos de julgamento mais lentos devido à análise detalhada"],
-      meters: [
-        { label: "Raciocínio Garantista", val: 80 },
-        { label: "Flexibilidade Prazos", val: 75 },
-        { label: "Abertura a Acordos", val: 85 }
-      ],
-      interacoes: [
-        { data: "02/05/2026", tipo: "Sustentação Oral", desc: "Apresentado agravo de instrumento. A Desembargadora fez perguntas técnicas pontuais sobre as provas e votou a favor do provimento.", resultado: "Recurso provido por unanimidade" }
-      ]
-    }
-  ]);
+  const [atores, setAtores] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  
+  // Estados de processamento por Magistrado
+  const [ingestingMap, setIngestingMap] = useState({});
+  const [profilingMap, setProfilingMap] = useState({});
+  
+  // Dados de analise adicionais por Magistrado (Timeline & Distribuição de Resultados)
+  const [analyticsMap, setAnalyticsMap] = useState({});
 
+  // Formulário de Cadastro
   const [novoAtorForm, setNovoAtorForm] = useState(false);
   const [nome, setNome] = useState("");
   const [tipo, setTipo] = useState("juiz");
-  const [tribunal, setTribunal] = useState("");
+  const [tribunal, setTribunal] = useState("TJPB");
+  const [comarca, setComarca] = useState("João Pessoa");
   const [vara, setVara] = useState("");
   const [perfil, setPerfil] = useState("legalista");
   const [temperamento, setTemperamento] = useState("rigido");
   const [preferencia, setPreferencia] = useState("");
 
-  const cadastrarAtor = (e) => {
+  /**
+   * Busca a lista de magistrados no backend
+   */
+  const carregarMagistrados = useCallback(async (query = "") => {
+    setLoading(true);
+    try {
+      const url = query ? `${API_BASE}/magistrados?q=${encodeURIComponent(query)}` : `${API_BASE}/magistrados`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Falha ao obter lista do backend.");
+      const data = await res.json();
+      setAtores(data);
+
+      // Carrega timeline e estatísticas para cada um de forma paralela e não bloqueante
+      data.forEach(ator => {
+        carregarTimelineEEstatisticas(ator.id);
+      });
+    } catch (err) {
+      console.error("[Front] Erro ao carregar magistrados:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  /**
+   * Carrega dados do histórico e estatísticas decisórias de um magistrado específico
+   */
+  const carregarTimelineEEstatisticas = async (id) => {
+    try {
+      const res = await fetch(`${API_BASE}/magistrados/${id}/timeline`);
+      if (!res.ok) throw new Error("Erro ao obter analítico.");
+      const data = await res.json();
+      setAnalyticsMap(prev => ({
+        ...prev,
+        [id]: data
+      }));
+    } catch (err) {
+      console.error(`[Front] Falha ao carregar timeline de ${id}:`, err);
+    }
+  };
+
+  useEffect(() => {
+    carregarMagistrados();
+  }, [carregarMagistrados]);
+
+  /**
+   * Executa a busca com debounce manual ou clique
+   */
+  const handleSearchChange = (e) => {
+    const val = e.target.value;
+    setSearchTerm(val);
+    // Dispara a busca
+    carregarMagistrados(val);
+  };
+
+  /**
+   * Cadastra um novo magistrado (Dossier)
+   */
+  const cadastrarAtor = async (e) => {
     e.preventDefault();
     if (!nome || !tribunal) return alert("Por favor, preencha Nome e Tribunal!");
 
-    const novo = {
-      id: Date.now().toString(),
-      nome,
-      tipo,
-      cargo: tipo === "juiz" ? "Juiz de Direito" : "Membro do Tribunal",
-      tribunal,
-      comarca: "Capital",
-      vara,
-      telefone: "(00) 0000-0000",
-      email: "contato@tribunal.jus.br",
-      atendimento: "Horário padrão de expediente",
-      perfil,
-      temperamento,
-      estiloAudiencia: "Perfil cadastrado recentemente.",
-      preferencia: preferencia || "Sem notas de preferências cadastradas.",
-      pontosPositivos: ["Cadastrado recentemente"],
-      pontosAtencao: ["Aguardando interações históricas"],
-      meters: [
-        { label: "Raciocínio Estimado", val: perfil === "legalista" ? 80 : 40 },
-        { label: "Rigidez Estimada", val: temperamento === "rigido" ? 85 : 30 },
-        { label: "Abertura a Acordos", val: 50 }
-      ],
-      interacoes: []
-    };
+    try {
+      const res = await fetch(`${API_BASE}/magistrados`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          nome,
+          tipo,
+          tribunal,
+          comarca,
+          vara,
+          cargo_atual: tipo === "juiz" ? "Juiz de Direito" : "Membro do Tribunal",
+          perfil_decisorio: perfil,
+          temperamento,
+          preferencias_processuais: preferencia
+        })
+      });
 
-    setAtores([novo, ...atores]);
-    setNovoAtorForm(false);
-    setNome("");
-    setPreferencia("");
+      if (!res.ok) throw new Error("Erro ao cadastrar.");
+      
+      alert("Dossier cadastrado com sucesso! Prossiga com a Ingestão de Decisões.");
+      setNovoAtorForm(false);
+      setNome("");
+      setPreferencia("");
+      carregarMagistrados(searchTerm);
+    } catch (err) {
+      alert(`Falha ao cadastrar magistrado: ${err.message}`);
+    }
+  };
+
+  /**
+   * Executa a coleta/ingestão respeitosa de jurisprudência (100 decisões)
+   */
+  const handleIngest = async (id) => {
+    setIngestingMap(prev => ({ ...prev, [id]: true }));
+    try {
+      const res = await fetch(`${API_BASE}/magistrados/${id}/ingest`, {
+        method: "POST"
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro de rede.");
+
+      alert(data.mensagem);
+      // Recarrega analítico e lista
+      await carregarTimelineEEstatisticas(id);
+      await carregarMagistrados(searchTerm);
+    } catch (err) {
+      alert(`Erro na coleta de decisões: ${err.message}`);
+    } finally {
+      setIngestingMap(prev => ({ ...prev, [id]: false }));
+    }
+  };
+
+  /**
+   * Executa a análise cognitiva do perfil via Claude 3.5 Sonnet
+   */
+  const handleProfile = async (id) => {
+    setProfilingMap(prev => ({ ...prev, [id]: true }));
+    try {
+      const res = await fetch(`${API_BASE}/magistrados/${id}/profile`, {
+        method: "POST"
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao invocar IA.");
+
+      alert("Análise cognitiva concluída com sucesso via Claude 3.5 Sonnet!");
+      // Recarrega analítico e lista
+      await carregarTimelineEEstatisticas(id);
+      await carregarMagistrados(searchTerm);
+    } catch (err) {
+      alert(`Falha no processamento qualitativo: ${err.message}`);
+    } finally {
+      setProfilingMap(prev => ({ ...prev, [id]: false }));
+    }
+  };
+
+  // Renderizador auxiliar de estrelas ★★★★☆
+  const renderStars = (rating) => {
+    const stars = [];
+    const clampRating = Math.max(1, Math.min(rating || 3, 5));
+    for (let i = 1; i <= 5; i++) {
+      stars.push(
+        <span key={i} className={i <= clampRating ? "text-color-gold text-lg" : "text-gray-600 text-lg"}>
+          ★
+        </span>
+      );
+    }
+    return (
+      <div className="flex items-center space-x-1 group relative cursor-help">
+        {stars}
+        <span className="tooltip hidden group-hover:block absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-[var(--bg-primary)] border border-[var(--border-color)] text-xxs p-2.5 rounded text-secondary w-48 shadow-lg z-50">
+          Metodologia: baseado no volume de decisões brutas analisadas e na dispersão temporal (fidelidade estatística).
+        </span>
+      </div>
+    );
   };
 
   return (
@@ -115,21 +198,30 @@ export default function Atores() {
             Cognitive Dossiers // <strong className="text-color-gold font-medium">Judicial Profiles</strong>
           </h1>
           <p className="text-xs text-secondary mt-2 tracking-wide">
-            Modelos de decisão e estatística comportamental confidencial para despachos e sustentações.
+            Profiling qualitativo e estatística de decisões de magistrados (TJPB/CNJ) processados cognitivamente por IA.
           </p>
         </div>
-        <button 
-          className="donna-btn text-xs tracking-wider" 
-          onClick={() => setNovoAtorForm(!novoAtorForm)}
-        >
-          {novoAtorForm ? "Fechar Dossier" : "＋ Cadastrar Novo Dossier"}
-        </button>
+        <div className="flex items-center space-x-3">
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={handleSearchChange}
+            placeholder="Pesquisar por juiz, comarca..."
+            className="donna-input w-64 text-xs"
+          />
+          <button 
+            className="donna-btn text-xs tracking-wider" 
+            onClick={() => setNovoAtorForm(!novoAtorForm)}
+          >
+            {novoAtorForm ? "Fechar Cadastro" : "＋ Cadastrar Magistrado"}
+          </button>
+        </div>
       </div>
 
       {/* FORMULÁRIO DE CADASTRO */}
       {novoAtorForm && (
-        <form onSubmit={cadastrarAtor} className="glass-card space-y-4 max-w-2xl">
-          <h3 className="text-lg font-bold border-b pb-2 border-[var(--border-color)] text-theme-primary">Criar Dossier Cognitivo</h3>
+        <form onSubmit={cadastrarAtor} className="glass-card space-y-4 max-w-2xl mx-auto">
+          <h3 className="text-lg font-bold border-b pb-2 border-[var(--border-color)] text-theme-primary">Cadastrar Magistrado para Dossier</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-xxs text-muted font-bold block mb-1">Nome Completo</label>
@@ -137,21 +229,21 @@ export default function Atores() {
                 type="text" 
                 value={nome}
                 onChange={(e) => setNome(e.target.value)}
-                placeholder="Ex: Dr. João da Silva" 
-                className="donna-input" 
+                placeholder="Ex: Dra. Patricia de Albuquerque" 
+                className="donna-input text-xs" 
+                required
               />
             </div>
             <div>
-              <label className="text-xxs text-muted font-bold block mb-1">Função / Cargo</label>
+              <label className="text-xxs text-muted font-bold block mb-1">Cargo / Função</label>
               <select 
                 value={tipo}
                 onChange={(e) => setTipo(e.target.value)}
-                className="donna-input"
+                className="donna-input text-xs"
               >
-                <option value="juiz">Juiz</option>
+                <option value="juiz">Juiz de Direito</option>
                 <option value="desembargador">Desembargador</option>
-                <option value="promotor">Promotor</option>
-                <option value="servidor_cartorio">Servidor de Cartório</option>
+                <option value="ministro">Ministro</option>
               </select>
             </div>
             <div>
@@ -160,157 +252,267 @@ export default function Atores() {
                 type="text" 
                 value={tribunal}
                 onChange={(e) => setTribunal(e.target.value)}
-                placeholder="Ex: TJPB, TRT2" 
-                className="donna-input" 
+                placeholder="Ex: TJPB" 
+                className="donna-input text-xs"
+                required
               />
             </div>
             <div>
-              <label className="text-xxs text-muted font-bold block mb-1">Vara / Comarca</label>
+              <label className="text-xxs text-muted font-bold block mb-1">Comarca</label>
+              <input 
+                type="text" 
+                value={comarca}
+                onChange={(e) => setComarca(e.target.value)}
+                className="donna-input text-xs"
+              />
+            </div>
+            <div>
+              <label className="text-xxs text-muted font-bold block mb-1">Vara ou Secretaria</label>
               <input 
                 type="text" 
                 value={vara}
                 onChange={(e) => setVara(e.target.value)}
-                placeholder="Ex: 3ª Vara do Trabalho" 
-                className="donna-input" 
+                placeholder="Ex: 2ª Vara Cível" 
+                className="donna-input text-xs"
               />
             </div>
             <div>
-              <label className="text-xxs text-muted font-bold block mb-1">Perfil Decisório</label>
+              <label className="text-xxs text-muted font-bold block mb-1">Perfil Prévio Estimado</label>
               <select 
                 value={perfil}
                 onChange={(e) => setPerfil(e.target.value)}
-                className="donna-input"
+                className="donna-input text-xs"
               >
-                <option value="legalista">Legalista (Apego à letra fria da lei)</option>
-                <option value="garantista">Garantista (Foco nas garantias fundamentais)</option>
-                <option value="pragmatico">Pragmático (Foco na resolução prática de conflitos)</option>
+                <option value="legalista">Legalista (Apego formal à lei)</option>
+                <option value="garantista">Garantista (Direitos e garantias fundamentais)</option>
+                <option value="pragmatico">Pragmático (Resolução de conflitos e economia)</option>
               </select>
             </div>
             <div>
-              <label className="text-xxs text-muted font-bold block mb-1">Temperamento em Audiência</label>
+              <label className="text-xxs text-muted font-bold block mb-1">Temperamento Prévio</label>
               <select 
                 value={temperamento}
                 onChange={(e) => setTemperamento(e.target.value)}
-                className="donna-input"
+                className="donna-input text-xs"
               >
-                <option value="rigido">Rígido (Exigente e pontual)</option>
-                <option value="flexivel">Flexível (Colaborativo e aberto)</option>
-                <option value="imprevisivel">Imprevisível (Flutuante)</option>
+                <option value="rigido">Rígido (Exigente e severo)</option>
+                <option value="flexivel">Flexível (Aberto e tolerante)</option>
+                <option value="imprevisivel">Imprevisível</option>
+                <option value="colaborativo">Colaborativo</option>
               </select>
             </div>
           </div>
           <div>
-            <label className="text-xxs text-muted font-bold block mb-1">Notas de Preferência (Dicas de Petição)</label>
+            <label className="text-xxs text-muted font-bold block mb-1">Notas de Orientação de Petição</label>
             <textarea 
               value={preferencia}
               onChange={(e) => setPreferencia(e.target.value)}
-              placeholder="Ex: Prefere petições sucintas, rejeita jurisprudência sem grifos..." 
-              className="donna-input h-20"
+              placeholder="Ex: Rejeita ementas repetitivas, prefere artigos marcados..." 
+              className="donna-input h-20 text-xs"
             />
           </div>
-          <button type="submit" className="donna-btn">Salvar no Banco Confidencial</button>
+          <button type="submit" className="donna-btn text-xs">Salvar no Banco Estratégico</button>
         </form>
       )}
 
-      {/* GRID DE CARDS DE ATORES */}
-      <div className="actor-grid">
-        {atores.map((ator) => (
-          <div key={ator.id} className="glass-card flex flex-col justify-between">
-            <div>
-              {/* Cabeçalho do Dossier */}
-              <div className="actor-header flex items-start justify-between">
-                <div>
-                  <h3 className="text-lg font-bold text-theme-primary">{ator.nome}</h3>
-                  <p className="text-xxs text-accent-cyan font-bold tracking-wider uppercase font-mono">{ator.cargo} • {ator.tribunal}</p>
-                  <p className="text-xxs text-muted font-mono">{ator.vara} ({ator.comarca})</p>
-                </div>
-                <span className="logo-badge">{ator.tipo}</span>
-              </div>
+      {/* LOADING */}
+      {loading ? (
+        <div className="text-center py-12 text-secondary font-mono text-xs">
+          [Carregando inteligência de magistrados...]
+        </div>
+      ) : atores.length === 0 ? (
+        <div className="text-center py-12 text-secondary font-mono text-xs">
+          Nenhum dossiê de magistrado localizado. Cadastre um novo acima.
+        </div>
+      ) : (
+        /* GRID DE DOSSIÊS */
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+          {atores.map((ator) => {
+            const analytics = analyticsMap[ator.id] || { timeline: [], estatisticas: { total: 0 } };
+            const stats = analytics.estatisticas;
+            const timeline = analytics.timeline;
 
-              {/* Contatos */}
-              <div className="space-y-1.5 text-xs text-secondary mb-5 bg-[var(--bg-primary)] p-3.5 rounded border border-[var(--border-color)]">
-                <p className="flex items-center space-x-1.5">
-                  <svg className="w-3.5 h-3.5 text-muted" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.94.725l.548 2.2a1 1 0 01-.321.988l-1.305.98a10.582 10.582 0 004.872 4.872l.98-1.305a1 1 0 01.988-.321l2.2.548a1 1 0 01.725.94V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                  </svg>
-                  <strong>Tel:</strong> {ator.telefone}
-                </p>
-                <p className="flex items-center space-x-1.5">
-                  <svg className="w-3.5 h-3.5 text-muted" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                  </svg>
-                  <strong>Email:</strong> {ator.email}
-                </p>
-                <p className="flex items-center space-x-1.5">
-                  <svg className="w-3.5 h-3.5 text-muted" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <strong>Atendimento:</strong> {ator.atendimento}
-                </p>
-              </div>
-
-              {/* Estatística Comportamental (Harvey Cognitive Meters) */}
-              <div className="space-y-4">
+            return (
+              <div key={ator.id} className="glass-card flex flex-col justify-between space-y-6">
                 <div>
-                  <span className="text-xxs font-bold text-muted uppercase tracking-wider block mb-2">Cognitive decision metrics:</span>
-                  {ator.meters.map((m, idx) => (
-                    <div key={idx} className="cognitive-meter-container">
-                      <div className="cognitive-meter-header">
-                        <span>{m.label}</span>
-                        <span className="font-mono text-accent-cyan">{m.val}%</span>
+                  {/* Cabeçalho do Card */}
+                  <div className="flex items-start justify-between border-b border-[var(--border-color)] pb-4 mb-4">
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <h3 className="text-lg font-bold text-theme-primary">{ator.nome}</h3>
+                        {ator.sync_pending === 1 && (
+                          <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-mono">
+                            PENDENTE
+                          </span>
+                        )}
                       </div>
-                      <div className="cognitive-meter-track">
-                        <div className="cognitive-meter-bar" style={{ width: `${m.val}%` }}></div>
+                      <p className="text-xxs text-accent-cyan font-bold tracking-wider uppercase font-mono">
+                        {ator.cargo_atual || "Magistrado"} • {ator.tribunal}
+                      </p>
+                      <p className="text-xxs text-muted font-mono">{ator.vara || "Secretaria Plena"} ({ator.comarca || "Geral"})</p>
+                    </div>
+                    <div className="flex flex-col items-end space-y-1">
+                      <span className="logo-badge uppercase text-[9px]">{ator.tipo}</span>
+                      {renderStars(ator.grau_confianca_perfil)}
+                    </div>
+                  </div>
+
+                  {/* Informações Funcionais / Contatos */}
+                  <div className="grid grid-cols-2 gap-4 text-xs text-secondary bg-[var(--bg-primary)] p-3 rounded border border-[var(--border-color)] mb-4">
+                    <p><strong>E-mail:</strong> {ator.email_gabinete || "Não coletado"}</p>
+                    <p><strong>Telefone:</strong> {ator.telefone_gabinete || "Não coletado"}</p>
+                    <p className="col-span-2"><strong>Atendimento:</strong> {ator.horario_atendimento || "Horário do tribunal"}</p>
+                  </div>
+
+                  {/* Estatísticas Decisórias (SVG Conic Gradient ou Progress Bars) */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center mb-6">
+                    {/* Gráfico de Pizza SVG/CSS */}
+                    <div className="flex flex-col items-center justify-center p-3 bg-[var(--bg-primary)] rounded border border-[var(--border-color)]">
+                      <span className="text-xxs font-bold text-muted uppercase tracking-wider mb-3">Distribuição de Resultados:</span>
+                      {stats.total > 0 ? (
+                        <div className="flex items-center space-x-4">
+                          <div 
+                            className="w-20 h-20 rounded-full border border-[var(--border-color)]"
+                            style={{
+                              background: `conic-gradient(
+                                #10b981 0% ${stats.procedente_pct}%, 
+                                #f59e0b ${stats.procedente_pct}% ${stats.procedente_pct + stats.parcial_pct}%, 
+                                #ef4444 ${stats.procedente_pct + stats.parcial_pct}% ${stats.procedente_pct + stats.parcial_pct + stats.improcedente_pct}%, 
+                                #64748b ${stats.procedente_pct + stats.parcial_pct + stats.improcedente_pct}% 100%
+                              )`
+                            }}
+                          />
+                          <div className="text-xxs space-y-1 text-secondary">
+                            <p className="flex items-center space-x-1.5">
+                              <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full inline-block" />
+                              <span>Procedente: <strong>{stats.procedente_pct}%</strong></span>
+                            </p>
+                            <p className="flex items-center space-x-1.5">
+                              <span className="w-2.5 h-2.5 bg-amber-500 rounded-full inline-block" />
+                              <span>Parcial: <strong>{stats.parcial_pct}%</strong></span>
+                            </p>
+                            <p className="flex items-center space-x-1.5">
+                              <span className="w-2.5 h-2.5 bg-rose-500 rounded-full inline-block" />
+                              <span>Improcedente: <strong>{stats.improcedente_pct}%</strong></span>
+                            </p>
+                            <p className="flex items-center space-x-1.5">
+                              <span className="w-2.5 h-2.5 bg-slate-500 rounded-full inline-block" />
+                              <span>Outro: <strong>{stats.outro_pct}%</strong></span>
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-muted text-xxs italic py-6">[Sem dados estatísticos. Inicie a Ingestão]</div>
+                      )}
+                      <span className="text-[10px] text-muted mt-2 font-mono">{stats.total} decisões coletadas</span>
+                    </div>
+
+                    {/* Métricas Cognitivas */}
+                    <div className="space-y-3.5">
+                      <span className="text-xxs font-bold text-muted uppercase tracking-wider block">Métricas Comportamentais Estimadas:</span>
+                      
+                      <div className="cognitive-meter-container">
+                        <div className="cognitive-meter-header">
+                          <span>Tendência {ator.perfil_decisorio ? ator.perfil_decisorio.toUpperCase() : "LEGALISTA"}</span>
+                          <span className="font-mono text-accent-cyan">
+                            {ator.perfil_decisorio === "legalista" ? "85%" : ator.perfil_decisorio === "garantista" ? "80%" : "75%"}
+                          </span>
+                        </div>
+                        <div className="cognitive-meter-track">
+                          <div 
+                            className="cognitive-meter-bar" 
+                            style={{ width: ator.perfil_decisorio === "legalista" ? "85%" : ator.perfil_decisorio === "garantista" ? "80%" : "75%" }} 
+                          />
+                        </div>
+                      </div>
+
+                      <div className="cognitive-meter-container">
+                        <div className="cognitive-meter-header">
+                          <span>Temperamento {ator.temperamento ? ator.temperamento.toUpperCase() : "RÍGIDO"}</span>
+                          <span className="font-mono text-accent-cyan">
+                            {ator.temperamento === "rigido" ? "90%" : ator.temperamento === "flexivel" ? "40%" : "60%"}
+                          </span>
+                        </div>
+                        <div className="cognitive-meter-track">
+                          <div 
+                            className="cognitive-meter-bar" 
+                            style={{ width: ator.temperamento === "rigido" ? "90%" : ator.temperamento === "flexivel" ? "40%" : "60%" }} 
+                          />
+                        </div>
                       </div>
                     </div>
-                  ))}
-                </div>
-
-                {/* Perfil & Dicas */}
-                <div className="text-xs text-secondary leading-relaxed bg-[var(--bg-primary)] p-3 rounded border border-[var(--border-color)] border-l-2 border-color-gold">
-                  <p className="mb-2"><strong>Estilo em Audiência:</strong> {ator.estiloAudiencia}</p>
-                  <p><strong>Diretriz de Escrita:</strong> {ator.preferencia}</p>
-                </div>
-
-                {/* Prós e Contras */}
-                <div className="grid grid-cols-2 gap-2 text-xxs leading-relaxed">
-                  <div className="p-2.5 bg-emerald-950/10 border border-emerald-900/25 rounded text-accent-emerald">
-                    <strong>Pontos Fortes:</strong>
-                    <ul className="list-disc pl-3 mt-1 space-y-1">
-                      {ator.pontosPositivos.map((p, i) => <li key={i}>{p}</li>)}
-                    </ul>
                   </div>
-                  <div className="p-2.5 bg-rose-950/10 border border-rose-900/25 rounded text-accent-rose">
-                    <strong>Pontos de Atenção:</strong>
-                    <ul className="list-disc pl-3 mt-1 space-y-1">
-                      {ator.pontosAtencao.map((p, i) => <li key={i}>{p}</li>)}
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            </div>
 
-            {/* Histórico de Interações */}
-            {ator.interacoes.length > 0 && (
-              <div className="mt-5 pt-4 border-t border-[var(--border-color)]">
-                <span className="text-xxs font-bold text-muted uppercase tracking-wider block mb-2">Histórico de Confrontos ({ator.interacoes.length}):</span>
-                <div className="space-y-2 text-xxs text-secondary">
-                  {ator.interacoes.map((item, idx) => (
-                    <div key={idx} className="bg-[var(--bg-primary)] p-2.5 rounded border border-[var(--border-color)]">
-                      <div className="flex items-center justify-between mb-1">
-                        <strong className="text-theme-primary">{item.tipo}</strong>
-                        <span className="text-muted font-mono">{item.data}</span>
+                  {/* Estilo em Audiência e Preferências */}
+                  <div className="text-xs text-secondary leading-relaxed bg-[var(--bg-primary)] p-3 rounded border border-[var(--border-color)] border-l-2 border-color-gold space-y-2 mb-4">
+                    <p><strong>Estilo em Audiência:</strong> {ator.estilo_audiencia || "Aguardando processamento qualitativo do perfil."}</p>
+                    <p><strong>Diretriz de Escrita (Preferências):</strong> {ator.preferencias_processuais || "Nenhuma dica de escrita cadastrada para este magistrado."}</p>
+                  </div>
+
+                  {/* Linha do Tempo (Consistency Timeline) */}
+                  {timeline.length > 0 && (
+                    <div className="bg-[var(--bg-primary)] p-3 rounded border border-[var(--border-color)] mb-4">
+                      <span className="text-xxs font-bold text-muted uppercase tracking-wider block mb-2">Timeline de Consistência Cognitiva:</span>
+                      <div className="relative border-l border-gray-700 pl-4 ml-2 space-y-3.5 py-1">
+                        {timeline.map((item, idx) => (
+                          <div key={idx} className="relative text-xxs text-secondary">
+                            <span className="absolute -left-[21.5px] top-1.5 w-2 h-2 rounded-full bg-accent-cyan border border-[var(--bg-primary)]" />
+                            <div className="flex justify-between font-mono text-muted text-[10px] mb-0.5">
+                              <span>Análise #{idx + 1}</span>
+                              <span>{item.data_registro}</span>
+                            </div>
+                            <p>
+                              Classificado como <strong className="text-theme-primary uppercase">{item.perfil_decisorio}</strong> ({item.temperamento}) 
+                              com base em <strong>{item.decisoes_analisadas} decisões</strong>.
+                            </p>
+                          </div>
+                        ))}
                       </div>
-                      <p className="italic mb-1 text-muted">"{item.desc}"</p>
-                      <p className="text-accent-emerald font-bold">→ Resultado: {item.resultado}</p>
                     </div>
-                  ))}
+                  )}
+
+                  {/* Prós e Contras */}
+                  {ator.pontos_positivos?.length > 0 && (
+                    <div className="grid grid-cols-2 gap-2 text-xxs leading-relaxed">
+                      <div className="p-2.5 bg-emerald-950/10 border border-emerald-900/25 rounded text-accent-emerald">
+                        <strong>Pontos Fortes:</strong>
+                        <ul className="list-disc pl-3 mt-1 space-y-1">
+                          {ator.pontos_positivos.map((p, i) => <li key={i}>{p}</li>)}
+                        </ul>
+                      </div>
+                      <div className="p-2.5 bg-rose-950/10 border border-rose-900/25 rounded text-accent-rose">
+                        <strong>Pontos de Atenção:</strong>
+                        <ul className="list-disc pl-3 mt-1 space-y-1">
+                          {ator.pontos_atencao.map((p, i) => <li key={i}>{p}</li>)}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Botões de Ação para Ingestão e Mapeamento de Perfil */}
+                <div className="flex items-center space-x-3 pt-4 border-t border-[var(--border-color)]">
+                  <button 
+                    onClick={() => handleIngest(ator.id)}
+                    disabled={ingestingMap[ator.id] || profilingMap[ator.id]}
+                    className="donna-btn text-xxs tracking-wider bg-slate-800 hover:bg-slate-700 text-theme-primary flex-1"
+                  >
+                    {ingestingMap[ator.id] ? "Coletando Decisões..." : "📥 Ingestão DJe/TJPB"}
+                  </button>
+                  <button 
+                    onClick={() => handleProfile(ator.id)}
+                    disabled={profilingMap[ator.id] || ingestingMap[ator.id] || stats.total < 10}
+                    className="donna-btn text-xxs tracking-wider bg-accent-cyan/20 border border-accent-cyan/35 text-accent-cyan hover:bg-accent-cyan/30 flex-1 disabled:opacity-40"
+                    title={stats.total < 10 ? "Requer no mínimo 10 decisões coletadas para perfilamento" : ""}
+                  >
+                    {profilingMap[ator.id] ? "Mapeando com Claude..." : "🧠 Mapear Perfil Cognitivo"}
+                  </button>
                 </div>
               </div>
-            )}
-          </div>
-        ))}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

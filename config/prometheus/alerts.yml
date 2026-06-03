@@ -1,0 +1,61 @@
+# Prometheus Alert Rules for Donna Copilot Jurídico V3.0
+# Reference: config/prometheus/alerts.yml
+
+groups:
+  - name: donna-compliance-alerts
+    rules:
+      
+      # 1. Alerta CRÍTICO: CircuitBreaker do PJe aberto por mais de 5 min
+      - alert: PjeCircuitBreakerOpen
+        expr: pje_circuit_breaker_status{state="OPEN"} == 1
+        for: 5m
+        labels:
+          severity: critical
+          tier: integration
+        annotations:
+          summary: "Circuit Breaker do PJe está aberto"
+          description: "A ponte de comunicação com o barramento do PJe está rompida e no estado aberto há mais de 5 minutos devido a falhas consecutivas de rede ou handshake."
+
+      # 2. Alerta CRÍTICO: Certificado digital expira em menos de 7 dias
+      - alert: CertificadoDigitalExpiring
+        expr: pje_certificate_expiry_days < 7
+        for: 1m
+        labels:
+          severity: critical
+          tier: security
+        annotations:
+          summary: "Certificado digital próximo do vencimento"
+          description: "O certificado ICP-Brasil (A1) do escritório piloto ativo expira em menos de 7 dias. Ação de rotação/upload imediata é necessária."
+
+      # 3. Alerta ALTO: Taxa de erro do PJe > 10% nos últimos 5 min
+      - alert: PjeErrorRateHigh
+        expr: (sum(rate(pje_queries_logs_total{status="error"}[5m])) / sum(rate(pje_queries_logs_total[5m]))) * 100 > 10
+        for: 5m
+        labels:
+          severity: page
+          tier: service
+        annotations:
+          summary: "Taxa de erro PJe superior a 10%"
+          description: "Detecção de anomalia no barramento: a proporção de requisições mal sucedidas às APIs dos tribunais superou os 10% nos últimos 5 minutos."
+
+      # 4. Alerta MÉDIO: Latência p95 do chat > 5s
+      - alert: ChatLatencyHigh
+        expr: histogram_quantile(0.95, sum(rate(donna_chat_latency_seconds_bucket[5m])) by (le)) > 5
+        for: 5m
+        labels:
+          severity: warning
+          tier: user_experience
+        annotations:
+          summary: "Latência p95 do Chat superior a 5s"
+          description: "As respostas cognitivas geradas pela Donna estão demorando mais de 5 segundos para serem transmitidas (p95) nos últimos 5 minutos."
+
+      # 5. Alerta INFO: Sync SQLite->Supabase pendente há mais de 10 min
+      - alert: SQLiteSyncPending
+        expr: offline_sync_pending_records > 0
+        for: 10m
+        labels:
+          severity: info
+          tier: data_sync
+        annotations:
+          summary: "Sincronização offline pendente há mais de 10m"
+          description: "Existem registros de processos ou prazos acumulados no banco de dados local SQLite sem confirmação de sincronismo em nuvem com o Supabase."

@@ -6,6 +6,9 @@ import { DonnaAgent, AgentEvent } from '../ai/donna-agent.js';
 import { ContextBuilder } from '../ai/context-builder.js';
 import { pjeConfig } from '../config/pje-config.js';
 import { CertificateVault } from '../security/certificate-vault.js';
+import { supabase } from '../config/supabase.js';
+// DT-04: preHandler de autenticação JWT
+import { requireAuth } from '../middleware/auth.js';
 
 let bridge: MCPBridge | null = null;
 let pjeService: PjeService | null = null;
@@ -15,7 +18,21 @@ const chatRequestSchema = z.object({
   message: z.string()
     .min(1, { message: 'Mensagem não pode ser vazia.' })
     .max(2000, { message: 'Limite de caracteres excedido (máx 2000).' })
-    .transform(val => val.replace(/[\u0000-\u001F\u007F-\u009F]/g, '')),
+    .transform(val => val.replace(/[\u0000-\u001F\u007F-\u009F]/g, ''))
+    .refine(val => {
+      const injectionTerms = [
+        'ignore as instruções',
+        'ignore anterior',
+        'ignore previous',
+        'system override',
+        'jailbreak',
+        'instruções do sistema',
+        'você agora é',
+        'you are now a'
+      ];
+      const lowerVal = val.toLowerCase();
+      return !injectionTerms.some(term => lowerVal.includes(term));
+    }, { message: 'Donna identificou instruções de controle de sistema ou bypass não autorizados.' }),
   sessionId: z.string().min(1, { message: 'ID da sessão é obrigatório.' }),
   userId: z.string().min(1, { message: 'ID do usuário/operador é obrigatório.' }),
 });
@@ -44,10 +61,50 @@ export default async function pjeChatRoutes(fastify: FastifyInstance, options: F
   }
 
   /**
+   * GET /api/pje/processo/:numero
+   * Busca dados de um processo específico pelo número CNJ via MCP Server.
+   */
+  fastify.get('/api/pje/processo/:numero', async (request, reply) => {
+    const { numero } = request.params as { numero: string };
+    const correlationId = (request.headers['x-correlation-id'] as string) || `PJE-GET-${Date.now()}`;
+    const operadorId = (request.headers['x-user-id'] as string) || 'da39b5b2-3864-44df-be9b-e7b8c2d82910';
+
+    const cnjRegex = /^\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}$/;
+    if (!cnjRegex.test(numero)) {
+      return reply.status(400).send({ error: 'Formato do número CNJ do processo inválido.' });
+    }
+
+    try {
+      if (!pjeService) {
+        return reply.status(503).send({ error: 'Serviço PJe não inicializado.' });
+      }
+
+      const processo = await pjeService.buscarProcesso(numero, operadorId, correlationId);
+      
+      return reply.send({
+        ...processo,
+        ...((processo as any).bloqueado ? {} : {
+          ultimaMovimentacao: processo.movimentos && processo.movimentos.length > 0
+            ? processo.movimentos[0]
+            : { data: new Date().toLocaleDateString('pt-BR'), descricao: 'Processo consultado via barramento PJe.' },
+          proximoPrazo: (processo as any).segredoJustica 
+            ? 'Não divulgado (Segredo de Justiça)' 
+            : '15 dias úteis para manifestação.'
+        })
+      });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      fastify.log.error(`[PJe API] Erro ao obter processo ${numero}: ${errMsg}`);
+      return reply.status(500).send({ error: 'Erro ao consultar processo judicial.', detalhes: errMsg });
+    }
+  });
+
+  /**
    * POST /api/donna/chat
    * Endpoint de chat em tempo real com streaming Server-Sent Events (SSE).
+   * DT-04: Protegido por requireAuth — request.user é garantido neste ponto.
    */
-  fastify.post('/api/donna/chat', async (request, reply) => {
+  fastify.post('/api/donna/chat', { preHandler: [requireAuth] }, async (request, reply) => {
     const correlationId = request.headers['x-correlation-id'] as string || `CHAT-${Date.now()}`;
     
     // 1. Validação de Input com Zod (Fail-Fast)
@@ -57,7 +114,11 @@ export default async function pjeChatRoutes(fastify: FastifyInstance, options: F
       return reply.status(400).send({ error: 'Parâmetros de chat inválidos', detalhes: errorMsg });
     }
 
-    const { message, sessionId, userId } = bodyParse.data;
+    const { message, sessionId } = bodyParse.data;
+    // DT-04 FIX: userId e escritorio_id vêm EXCLUSIVAMENTE do JWT verificado.
+    // request.user é injetado pelo requireAuth preHandler — nunca pode ser forjado via body.
+    const userId = request.user!.id;
+    const escritorioId = request.user!.escritorio_id;
     const startTime = Date.now();
     const toolsCalledList: string[] = [];
 
@@ -108,19 +169,66 @@ export default async function pjeChatRoutes(fastify: FastifyInstance, options: F
       clearTimeout(executionTimeout);
     };
 
+    // 5. Salvar mensagem do usuário assincronamente (não bloqueia o streaming)
+    Promise.resolve().then(async () => {
+      try {
+        // Usar escritorio_id do JWT (DT-04) — nunca um fallback hardcoded
+        const extEscritorioId = escritorioId;
+
+        // Garantir que a sessão existe
+        const { data: sessionExists } = await supabase
+          .from('chat_sessions')
+          .select('id')
+          .eq('id', sessionId)
+          .single();
+
+        if (!sessionExists) {
+          await supabase.from('chat_sessions').insert({
+            id: sessionId,
+            escritorio_id: extEscritorioId,
+            usuario_id: userId,
+            titulo: message.substring(0, 40) + (message.length > 40 ? '...' : '')
+          });
+        }
+
+        // Inserir a mensagem do usuário
+        await supabase.from('chat_messages').insert({
+          escritorio_id: extEscritorioId,
+          session_id: sessionId,
+          role: 'user',
+          content: message,
+          metadata: { timestamp: new Date().toISOString() }
+        });
+      } catch (err) {
+        console.error('[Supabase Chat Persistence] Erro ao gravar mensagem do usuário:', err);
+      }
+    });
+
     try {
-      // 5. Escutar eventos de tool_result da ponte para auditoria de segurança
+      // 6. Escutar eventos de tool_result da ponte para auditoria de segurança
       const onToolResult = (data: any) => {
         toolsCalledList.push(data.tool || 'pje_mcp_tool');
       };
       bridge!.on('tool_result', onToolResult);
 
-      // 6. Executar o Agente IA em loop com streaming SSE nativo
+      let respostaDonnaAcumulada = '';
+      let metadadosFinais: any = {};
+
+      // 7. Executar o Agente IA em loop com streaming SSE nativo
       await agent.executeChatStream(
         history,
         userId,
         correlationId,
         (event: AgentEvent) => {
+          // Acumular tokens da Donna e metadados finais
+          if (event.type === 'token') {
+            respostaDonnaAcumulada += event.content;
+          } else if (event.type === 'done') {
+            metadadosFinais.usage = event.usage;
+          } else if (event.type === 'thinking') {
+            if (!metadadosFinais.tools) metadadosFinais.tools = [];
+            metadadosFinais.tools.push(event.tool);
+          }
           // Escrever cada frame JSON na linha SSE
           reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
         }
@@ -130,6 +238,36 @@ export default async function pjeChatRoutes(fastify: FastifyInstance, options: F
       bridge!.off('tool_result', onToolResult);
       cleanup();
       reply.raw.end();
+
+      // 8. Salvar resposta da Donna assincronamente
+      if (respostaDonnaAcumulada) {
+        Promise.resolve().then(async () => {
+          try {
+            // Usar escritorio_id do JWT (DT-04)
+            const extEscritorioId = escritorioId;
+
+            await supabase.from('chat_messages').insert({
+              escritorio_id: extEscritorioId,
+              session_id: sessionId,
+              role: 'assistant',
+              content: respostaDonnaAcumulada,
+              metadata: {
+                ...metadadosFinais,
+                timestamp: new Date().toISOString(),
+                correlationId
+              }
+            });
+
+            // Atualizar carimbo da sessão
+            await supabase
+              .from('chat_sessions')
+              .update({ updated_at: new Date().toISOString() })
+              .eq('id', sessionId);
+          } catch (err) {
+            console.error('[Supabase Chat Persistence] Erro ao gravar resposta da Donna:', err);
+          }
+        });
+      }
 
       // Auditoria SIEM estruturada
       console.log(JSON.stringify({

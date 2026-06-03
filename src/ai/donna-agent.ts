@@ -2,6 +2,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import { PjeService } from '../services/pje/pje-service.js';
 import { PJE_MCP_TOOLS } from '../services/pje/pje-tools.js';
 import { ChatMessage } from './context-builder.js';
+import { supabase } from '../config/supabase.js';
+import { buscarPlaybooks } from '../rag/retrieval-service.js';
 
 export interface AgentOptions {
   model?: string;
@@ -37,8 +39,13 @@ DIRETRIZES DE COMPORTAMENTO E SEGURANÇA:
 1. Tem acesso direto ao PJe do tribunal e responde de forma precisa, citando números de processo, fases e andamentos.
 2. Jamais invente ou alucine informações processuais. Se um processo não for localizado no PJe, diga claramente.
 3. Ao responder sobre processos, use sempre uma linguagem profissional e técnica, mas adote o tom confiante da persona da Donna.
-4. Respeite as regras de segredo de justiça e LGPD: nunca vaze CPFs completos nas conversas, mas informe andamentos.
-5. Recomende ações proativas baseadas nas informações consultadas.`;
+4. Respeite estritamente as regras de Segredo de Justiça (Art. 189 do CPC) e a LGPD:
+   - Se um processo estiver sob segredo de justiça (ou se as ferramentas do PJe indicarem que o acesso está bloqueado por sigilo), você deve RECUSAR-SE a detalhar seu conteúdo, andamentos ou partes.
+   - Diga claramente que o acesso ao processo é sigiloso de acordo com o Artigo 189 do CPC e que apenas partes habilitadas nos autos possuem legitimidade de acesso.
+   - Nunca revele nomes de partes, menores, testemunhas ou vítimas em processos que envolvam direito de família, violência doméstica ou que estejam sob sigilo judicial.
+   - Nunca exponha dados pessoais ou sensíveis nas conversas.
+5. Recomende ações proativas baseadas nas informações consultadas.
+6. Quando disponíveis via ferramenta buscar_playbook_escritorio, sempre embase suas análises e respostas nos playbooks e manuais de teses do escritório. Cite o documento de origem explicitamente: 'Conforme o Playbook de Contratos do escritório (2024)...' ou 'De acordo com o Playbook de Petições (Dos Fatos)...'`;
 
   constructor(pjeService: PjeService, options?: AgentOptions) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -89,6 +96,22 @@ DIRETRIZES DE COMPORTAMENTO E SEGURANÇA:
       description: tool.description,
       input_schema: tool.input_schema
     }));
+
+    // Injetar a ferramenta de busca de playbooks corporativos/jurídicos do escritório
+    tools.push({
+      name: 'buscar_playbook_escritorio',
+      description: 'Busca teses, modelos de contratos, pareceres e boas práticas nos playbooks e base de conhecimento internos do escritório de advocacia.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: 'A consulta de busca contendo o tema jurídico ou tese a ser pesquisada nos manuais do escritório.'
+          }
+        },
+        required: ['query']
+      } as any
+    });
 
     const messages: Anthropic.MessageParam[] = history.map(msg => ({
       role: msg.role,
@@ -169,6 +192,25 @@ DIRETRIZES DE COMPORTAMENTO E SEGURANÇA:
                   result = await this.pjeService.listarProcessos(toolArgs.filter || '', operadorId, correlationId);
                 } else if (toolName === 'pje_configurar') {
                   result = { status: 'ok', message: 'PJe configurado na sessão ativa' };
+                } else if (toolName === 'buscar_playbook_escritorio') {
+                  // Obter escritorio_id do operador do chat para garantir multi-tenant isolation
+                  const { data: userRec } = await supabase
+                    .from('usuarios')
+                    .select('escritorio_id')
+                    .eq('id', operadorId)
+                    .single();
+
+                  const escId = userRec?.escritorio_id || 'da39b5b2-3864-44df-be9b-e7b8c2d82910';
+
+                  const chunks = await buscarPlaybooks(toolArgs.query, escId, 5);
+                  result = chunks.map(c => ({
+                    documento: c.metadata?.nome_arquivo || 'Manual Interno',
+                    secao: c.metadata?.secao || 'Geral',
+                    tipo: c.metadata?.tipo || 'Documento',
+                    area: c.metadata?.area_direito || 'Geral',
+                    conteudo: c.conteudo,
+                    relevancia: c.score || c.similarity
+                  }));
                 } else {
                   throw new Error(`Ferramenta MCP desconhecida no Agente Donna: ${toolName}`);
                 }

@@ -2,7 +2,10 @@
 
 import { Geist, Geist_Mono } from "next/font/google";
 import { useState, useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import "./globals.css";
+// DT-06: guard de autenticação no layout raiz
+import { supabase, getSession } from "../lib/supabase";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,10 +17,44 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export default function RootLayout({ children }) {
-  const [theme, setTheme] = useState("dark"); // Estado do tema (dark por padrão)
+// Rotas acessíveis sem autenticação
+const PUBLIC_ROUTES = ['/login', '/onboarding'];
 
-  // Carregar preferência salva do usuário ao montar
+export default function RootLayout({ children }) {
+  const [theme, setTheme] = useState("dark");
+  const [authChecked, setAuthChecked] = useState(false);
+  const pathname = usePathname();
+  const router = useRouter();
+
+  const isPublicRoute = PUBLIC_ROUTES.some(r => pathname?.startsWith(r));
+
+  // Guard de autenticação — DT-06
+  useEffect(() => {
+    if (isPublicRoute) {
+      setAuthChecked(true);
+      return;
+    }
+
+    getSession().then((session) => {
+      if (!session) {
+        router.replace('/login');
+      } else {
+        setAuthChecked(true);
+      }
+    });
+
+    // Listener para logout em outra aba
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, realSession) => {
+      const session = await getSession();
+      if (!session && !isPublicRoute) {
+        router.replace('/login');
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [pathname, isPublicRoute, router]);
+
+  // Carregar preferência de tema salva
   useEffect(() => {
     const savedTheme = localStorage.getItem("donna-theme") || "dark";
     setTheme(savedTheme);
@@ -28,18 +65,30 @@ export default function RootLayout({ children }) {
     }
   }, []);
 
-  // Alternar entre temas
   const toggleTheme = () => {
     const nextTheme = theme === "dark" ? "light" : "dark";
     setTheme(nextTheme);
     localStorage.setItem("donna-theme", nextTheme);
-    
     if (nextTheme === "light") {
       document.body.classList.add("light-theme");
     } else {
       document.body.classList.remove("light-theme");
     }
   };
+
+  // Enquanto verifica autenticação, exibe spinner mínimo (evita flash de conteúdo privado)
+  if (!authChecked && !isPublicRoute) {
+    return (
+      <html lang="pt-BR">
+        <head><title>Donna</title></head>
+        <body style={{ background: 'hsl(240,40%,4%)', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', margin: 0 }}>
+          <div style={{ width: 32, height: 32, border: '3px solid rgba(255,255,255,0.1)', borderTopColor: 'hsl(220,80%,60%)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </body>
+      </html>
+    );
+  }
+
 
   return (
     <html lang="pt-BR" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>

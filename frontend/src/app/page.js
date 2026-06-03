@@ -1,191 +1,27 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+// DT-05: hooks de dados reais (substitui useState hardcoded)
+import { usePrazos, useProcessos, useDashboardStats, updatePrazoStatus } from "../lib/api";
+import { useAuth } from "../lib/auth";
 
 export default function Dashboard() {
-  const [prazos, setPrazos] = useState([
-    {
-      id: "1",
-      cnj: "0001234-56.2026.8.15.0001",
-      tipo: "Apelação Cível",
-      dias: 15,
-      vencimento: "19/06/2026",
-      responsavel: "Dr. Roberto Silva",
-      prioridade: "urgente",
-      status: "aberto",
-      tribunal: "TJPB",
-      comarca: "João Pessoa",
-      motivo: "Acórdão disponibilizado no DJEN em 28/05/2026. Publicado em 29/05 (sexta-feira). Contagem de 15 dias úteis iniciada em 01/06/2026."
-    },
-    {
-      id: "2",
-      cnj: "0812345-12.2025.8.20.0001",
-      tipo: "Contestação de Mérito",
-      dias: 15,
-      vencimento: "23/06/2026",
-      responsavel: "Dra. Patrícia Lima",
-      prioridade: "alta",
-      status: "aberto",
-      tribunal: "TJRN",
-      comarca: "Natal",
-      motivo: "Disponibilizado no DJEN em 01/06/2026. Prazo final estendido por recesso local e feriado municipal de Natal em 15/06."
-    },
-    {
-      id: "3",
-      cnj: "0010987-88.2024.5.02.0002",
-      tipo: "Réplica à Contestação",
-      dias: 15,
-      vencimento: "16/06/2026",
-      responsavel: "Dr. Arthur Albuquerque",
-      prioridade: "media",
-      status: "aberto",
-      tribunal: "TRT2",
-      comarca: "São Paulo",
-      motivo: "Notificação expedida pelo painel eletrônico do DJEN em 25/05/2026."
-    },
-    {
-      id: "4",
-      cnj: "0004321-99.2025.8.19.0001",
-      tipo: "Embargos de Declaração",
-      dias: 5,
-      vencimento: "08/06/2026",
-      responsavel: "Dra. Patrícia Lima",
-      prioridade: "urgente",
-      status: "aberto",
-      tribunal: "TJRJ",
-      comarca: "Rio de Janeiro",
-      motivo: "Prazo de 5 dias úteis. Prorrogado por indisponibilidade reportada no sistema PJe do TJRJ no dia 03/06/2026 (Res. CNJ 455/2022)."
-    }
-  ]);
+  // DT-05: substituir todos os estados hardcoded por hooks que consomem a API real
+  const { prazos, loading: loadingPrazos, error: errorPrazos, refetch: refetchPrazos } = usePrazos();
+  const { processos, loading: loadingProcessos, error: errorProcessos, refetch: refetchProcessos } = useProcessos();
+  const { stats, loading: loadingStats } = useDashboardStats();
 
-  const [historicoAcoes, setHistoricoAcoes] = useState([
-    {
-      id: "act-1",
-      processo: "0001234-56.2026.8.15.0001",
-      evento: "ANÁLISE DE JUIZ CONCLUÍDA",
-      relevancia: "urgente",
-      donnaInsight: "O Juiz da 2ª Vara Cível de João Pessoa tem perfil legalista rígido e inflexível. Ele recusa prorrogações atípicas e indefere de imediato recursos fora de termos literais. Playbook de Apelação sugerido.",
-      hora: "Há 12 minutos"
-    },
-    {
-      id: "act-2",
-      processo: "0004321-99.2025.8.19.0001",
-      evento: "INDISPONIBILIDADE DETECTADA",
-      relevancia: "alta",
-      donnaInsight: "Radar Operacional capturou suspensão de serviços do PJe das 14h às 18h. Recalculei prazos estendendo o vencimento dos Embargos do dia 07/06 para o dia 08/06. Alertas emitidos.",
-      hora: "Há 2 horas"
-    },
-    {
-      id: "act-3",
-      processo: "0812345-12.2025.8.20.0001",
-      evento: "INGESTÃO VIA DIÁRIO OFICIAL",
-      relevancia: "media",
-      donnaInsight: "Coleta do Diário de Justiça do RN casou publicação com a OAB do Dr. Roberto Silva. Prazo de Contestação aberto no banco.",
-      hora: "Há 4 horas"
-    }
-  ]);
+  // Dados do usuário autenticado (DT-06)
+  const { user, signOut } = useAuth();
 
-  const [prazoExpandido, setPrazoExpandido] = useState(null);
+  // Estados de UI (mantidos conforme antes)
+  const [historicoAcoes, setHistoricoAcoes] = useState([]);
   const [activeDataIndex, setActiveDataIndex] = useState(4);
-  const [exibirAuditoria, setExibirAuditoria] = useState(false); // Modal de auditoria de IA
-  const [selectedStatType, setSelectedStatType] = useState(null); // 'processos', 'prazos', 'audiencias', 'alertas'
-  const [selectedProcess, setSelectedProcess] = useState(null);   // Processo ativo selecionado para visualização do prontuário
-  const [selectedHearing, setSelectedHearing] = useState(null);   // Audiência selecionada
-
-  const processosAtivosMock = [
-    {
-      cnj: "0001234-56.2026.8.15.0001",
-      titulo: "Ação Ordinária de Cobrança",
-      cliente: "Banco do Brasil S.A.",
-      adverso: "Construtora Silva Ltda",
-      tribunal: "TJPB",
-      comarca: "João Pessoa",
-      vara: "2ª Vara Cível",
-      juiz: "Dr. João Carlos de Albuquerque",
-      distribuicao: "12/01/2026",
-      valor: "R$ 450.000,00",
-      fase: "Instrução Processual",
-      status: "ativo",
-      andamentoRecente: "Réplica apresentada pelo autor. Aguardando saneamento do juiz.",
-      playbookSugerido: "Playbook — Apelação Cível Padrão",
-      perfilJuiz: "Legalista rígido. Rejeita doutrinas abstratas, prefere jurisprudência literal e objetiva.",
-      timeline: [
-        { data: "12/01/2026", evento: "Petição Inicial Distribuída" },
-        { data: "05/02/2026", evento: "Audiência de Conciliação (Infrutífera)" },
-        { data: "20/03/2026", evento: "Contestação do Réu Protocolada" },
-        { data: "28/05/2026", evento: "Réplica à Contestação Ingerida e Triada pela Donna" }
-      ]
-    },
-    {
-      cnj: "0812345-12.2025.8.20.0001",
-      titulo: "Ação de Indenização por Danos Morais",
-      cliente: "Maria Oliveira",
-      adverso: "Telemar Norte Leste S/A",
-      tribunal: "TJRN",
-      comarca: "Natal",
-      vara: "3ª Vara Cível",
-      juiz: "Dra. Heloísa Maria Souza",
-      distribuicao: "18/10/2025",
-      valor: "R$ 45.000,00",
-      fase: "Saneamento / Conciliação",
-      status: "ativo",
-      andamentoRecente: "Pauta de conciliação ativa para audiência presencial ou telepresencial.",
-      playbookSugerido: "Tese — Dano Moral por Inscrição Indevida",
-      perfilJuiz: "Garantista progressista. Sensível a causas de hipossuficiência de consumidores.",
-      timeline: [
-        { data: "18/10/2025", evento: "Distribuição da Inicial" },
-        { data: "14/11/2025", evento: "Despacho Deferindo Antecipação de Tutela" },
-        { data: "01/06/2026", evento: "Publicação de Pauta no DJEN triada pela Donna" }
-      ]
-    },
-    {
-      cnj: "0010987-88.2024.5.02.0002",
-      titulo: "Reclamação Trabalhista",
-      cliente: "João Santos",
-      adverso: "Supermercado Todo Dia Ltda",
-      tribunal: "TRT2",
-      comarca: "São Paulo",
-      vara: "15ª Vara do Trabalho",
-      juiz: "Dra. Cláudia Valéria",
-      distribuicao: "04/06/2024",
-      valor: "R$ 120.000,00",
-      fase: "Execução de Sentença",
-      status: "ativo",
-      andamentoRecente: "Cálculos homologados pelo juiz do trabalho. Execução de depósitos judiciais iniciada.",
-      playbookSugerido: "Playbook — Cumprimento de Sentença Trabalhista",
-      perfilJuiz: "Perfil celerista. Privilegia conciliação ágil em fase de execução de cálculos homologados.",
-      timeline: [
-        { data: "04/06/2024", evento: "Reclamação Trabalhista Protocolada" },
-        { data: "15/09/2024", evento: "Sentença proferida (Parcial Procedência)" },
-        { data: "10/11/2025", evento: "Julgamento de Recurso Ordinário (Mantida Sentença)" },
-        { data: "25/05/2026", evento: "Homologação de Cálculos Ingerida pela Donna" }
-      ]
-    },
-    {
-      cnj: "0004321-99.2025.8.19.0001",
-      titulo: "Embargos de Terceiro",
-      cliente: "Roberto Lima",
-      adverso: "União Federal",
-      tribunal: "TJRJ",
-      comarca: "Rio de Janeiro",
-      vara: "1ª Vara de Fazenda Pública",
-      juiz: "Dr. Marcelo Costa",
-      distribuicao: "09/03/2025",
-      valor: "R$ 850.000,00",
-      fase: "Fase de Provas",
-      status: "ativo",
-      andamentoRecente: "Manifestação sobre provas periciais pendente de contestação pela União.",
-      playbookSugerido: "Tese — Proteção de Bem de Família",
-      perfilJuiz: "Formalista técnico. Rejeita peças longas e preza por cronogramas periciais estritos.",
-      timeline: [
-        { data: "09/03/2025", evento: "Embargos Distribuídos" },
-        { data: "12/04/2025", evento: "Liminar deferida para suspensão de leilão" },
-        { data: "03/06/2026", evento: "Radar Operacional Donna detectou indisponibilidade PJe no TJRJ" }
-      ]
-    }
-  ];
-
-  const [processos, setProcessos] = useState(processosAtivosMock);
+  const [exibirAuditoria, setExibirAuditoria] = useState(false);
+  const [selectedStatType, setSelectedStatType] = useState(null);
+  const [selectedProcess, setSelectedProcess] = useState(null);
+  const [selectedHearing, setSelectedHearing] = useState(null);
+  const [prazoExpandido, setPrazoExpandido] = useState(null);
 
   // States de Cadastro de Processo (Sleek Glassmorphic Form)
   const [exibirCadastroProcesso, setExibirCadastroProcesso] = useState(false);
@@ -260,39 +96,6 @@ export default function Dashboard() {
     reader.readAsText(file);
   };
 
-  const recarregarProcessos = async () => {
-    try {
-      const procRes = await fetch("http://localhost:3000/processos");
-      if (procRes.ok) {
-        const procData = await procRes.json();
-        if (procData && procData.length > 0) {
-          const mappedProcessos = procData.map(p => ({
-            id: p.id,
-            cnj: p.numero_cnj,
-            titulo: p.classe || "Ação de Procedimento Comum",
-            cliente: p.clientes?.nome || "Cliente do Escritório",
-            adverso: p.adverso || "Parte Requerida",
-            tribunal: p.tribunal,
-            comarca: p.comarca || "Comarca Local",
-            vara: p.vara || "Vara Única",
-            juiz: p.atores_judiciario?.nome || "Julgador da Vara",
-            distribuicao: p.created_at ? new Date(p.created_at).toLocaleDateString("pt-BR") : "29/05/2026",
-            valor: "R$ 150.000,00",
-            fase: p.fase_processual || "Instrução Processual",
-            status: p.status || "ativo",
-            andamentoRecente: p.observacoes || "Docket mapeado e triado autonomamente pelo background worker.",
-            playbookSugerido: "Playbook Geral — Padrão Civil",
-            perfilJuiz: "Análise comportamental do juiz agendada pelo RAG cognitivo.",
-            timeline: [{ data: new Date().toLocaleDateString("pt-BR"), evento: "Abertura de monitoramento de docket jurídico." }]
-          }));
-          setProcessos(mappedProcessos);
-        }
-      }
-    } catch (err) {
-      console.warn("[Recarregar Processos] Erro ao buscar processos da API:", err.message);
-    }
-  };
-
   const cadastrarProcesso = async (e) => {
     e.preventDefault();
     if (!formCnj.trim()) return;
@@ -318,7 +121,7 @@ export default function Dashboard() {
       });
 
       if (response.ok) {
-        await recarregarProcessos();
+        await refetchProcessos();
         // Reset form e fechar modal
         setFormCnj("");
         setExibirCadastroProcesso(false);
@@ -327,42 +130,6 @@ export default function Dashboard() {
       console.error("[Cadastro Processo] Erro de rede ao registrar processo:", err.message);
     }
   };
-
-  // Efeito para carregar dados dinâmicos reais da API Fastify + Supabase
-  useEffect(() => {
-    async function carregarDadosReais() {
-      try {
-        // A. Carregar Processos Reais
-        await recarregarProcessos();
-
-        // B. Carregar Prazos Reais
-        const prazosRes = await fetch("http://localhost:3000/prazos");
-        if (prazosRes.ok) {
-          const prazosData = await prazosRes.json();
-          if (prazosData && prazosData.length > 0) {
-            const mappedPrazos = prazosData.map(pr => ({
-              id: pr.id,
-              cnj: pr.processos?.numero_cnj || "0000000-00.0000.0.00.0000",
-              tipo: pr.tipo_prazo || "Prazo Operacional",
-              dias: pr.prazo_dias,
-              vencimento: pr.data_vencimento ? new Date(pr.data_vencimento + "T00:00:00").toLocaleDateString("pt-BR") : "10/06/2026",
-              responsavel: pr.usuarios?.nome || "Responsável do Caso",
-              prioridade: pr.status === 'vencido' ? "urgente" : "alta",
-              status: pr.status || "aberto",
-              tribunal: pr.processos?.tribunal || "TJ",
-              comarca: pr.processos?.comarca || "Capital",
-              motivo: pr.observacoes || "Cálculo determinístico do motor de prazos da Donna com suporte a feriados."
-            }));
-            setPrazos(mappedPrazos);
-          }
-        }
-      } catch (err) {
-        console.warn("[Dashboard] Provedor de API offline. Rodando em modo demonstrativo com dados simulados.", err.message);
-      }
-    }
-
-    carregarDadosReais();
-  }, []);
 
   const audienciasSemana = [
     {
@@ -450,19 +217,9 @@ export default function Dashboard() {
   const concluirPrazo = async (id, e) => {
     e.stopPropagation();
     
-    // Atualização otimista no frontend para manter UX rápida
-    setPrazos(prazos.map(p => p.id === id ? { ...p, status: "cumprido" } : p));
-    
     try {
-      const res = await fetch(`http://localhost:3000/prazos/${id}/cumprir`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        }
-      });
-      if (!res.ok) {
-        console.warn("[Dashboard] Erro retornado ao dar baixa no prazo:", res.statusText);
-      }
+      await updatePrazoStatus(id, "cumprido");
+      await refetchPrazos();
     } catch (err) {
       console.warn("[Dashboard] Não foi possível dar baixa no prazo no servidor:", err.message);
     }

@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyPluginOptions } from 'fastify';
 import { pjeConfig } from '../config/pje-config.js';
 import { CertificateVault } from '../security/certificate-vault.js';
 import { supabase } from '../config/supabase.js';
+import { globalSyncStatus } from '../sync/sync-worker.js';
 
 // Métricas acumuladas na memória (Prometheus Exporter)
 export const metrics = {
@@ -95,6 +96,11 @@ export default async function monitoringRoutes(fastify: FastifyInstance, options
         database: databaseStatus,
         mcpServer: mcpServerStatus,
         anthropic: anthropicStatus,
+      },
+      sync: {
+        pendingSync: globalSyncStatus.pendingSync,
+        lastSyncAt: globalSyncStatus.lastSyncAt.toISOString(),
+        syncErrors: globalSyncStatus.syncErrors
       },
       issues: issues.length > 0 ? issues : undefined
     };

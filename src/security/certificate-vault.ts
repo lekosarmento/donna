@@ -41,7 +41,8 @@ export class CertificateVault {
     const resolvedPath = path.resolve(pfxPath);
 
     if (!fs.existsSync(resolvedPath)) {
-      throw new Error(`Caminho do certificado inválido para inicialização do Vault: ${resolvedPath}`);
+      // SECURITY: Não expõe o caminho real do PFX em produção
+      throw new Error(`Certificado digital não localizado no caminho configurado.`);
     }
 
     try {

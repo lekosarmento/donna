@@ -5,8 +5,10 @@ import {
 } from './pje-tools.js';
 import { LgpdHandler } from '../../compliance/lgpd-handler.js';
 import { AuditLogger } from '../../compliance/audit-logger.js';
+import { SigiloGuard } from '../../security/sigilo-guard.js';
+import { checkAndRecordRequest, RateLimitExceededError } from '../rate-limiter.js';
 
-#region Erros de Domínio Tipados
+// #region Erros de Domínio Tipados
 
 export class PjeDomainError extends Error {
   constructor(message: string, public readonly code: string) {
@@ -58,7 +60,7 @@ export class CircuitBreakerOpenError extends PjeDomainError {
   }
 }
 
-#endregion
+// #endregion
 
 interface CacheEntry<T> {
   data: T;
@@ -75,8 +77,7 @@ export class PjeService {
   private cache: Map<string, CacheEntry<PjeProcesso>> = new Map();
   private readonly CACHE_TTL_MS = 5 * 60 * 1000; // TTL estrito de 5 minutos (LGPD)
 
-  // Rate Limiting por Operador
-  private requestTimestamps: Map<string, number[]> = new Map();
+  // Rate Limiting persistente (DT-01)
   private readonly MAX_REQ_PER_MINUTE = 60;
 
   // Circuit Breaker da Ponte MCP
@@ -109,7 +110,7 @@ export class PjeService {
     if (cached && cached.expiry > Date.now()) {
       this.logStructured('info', 'Processo recuperado do cache em memória.', { numeroProcesso, correlationId });
       AuditLogger.log({ correlationId, userId: operadorId, action: 'BUSCAR_PROCESSO_CACHE', resource: numeroProcesso, result: 'SUCCESS' });
-      return cached.data;
+      return await SigiloGuard.protegerProcesso(cached.data, operadorId, correlationId);
     }
 
     try {
@@ -165,7 +166,10 @@ export class PjeService {
       // Logar Auditoria SIEM
       AuditLogger.log({ correlationId, userId: operadorId, action: 'BUSCAR_PROCESSO_PJE', resource: numeroProcesso, result: 'SUCCESS' });
 
-      return processoSanitizado;
+      // 9. Aplicar proteção de Segredo de Justiça (Art. 189 CPC)
+      const processoProtegido = await SigiloGuard.protegerProcesso(processoSanitizado, operadorId, correlationId);
+
+      return processoProtegido;
     } catch (error) {
       this.recordFailure();
       AuditLogger.log({ correlationId, userId: operadorId, action: 'BUSCAR_PROCESSO_PJE', resource: numeroProcesso, result: 'FAILED' });
@@ -233,18 +237,19 @@ export class PjeService {
   }
 
   private checkRateLimit(userId: string): void {
-    const now = Date.now();
-    const timestamps = this.requestTimestamps.get(userId) || [];
-    
-    // Limpar timestamps com mais de 60 segundos
-    const filtered = timestamps.filter(ts => now - ts < 60000);
-    
-    if (filtered.length >= this.MAX_REQ_PER_MINUTE) {
-      throw new RateLimitExcedidoError(userId);
+    try {
+      // DT-01 FIX: Usa rate limiter persistente via SQLite com TTL de 60s
+      checkAndRecordRequest(userId, {
+        maxRequests: this.MAX_REQ_PER_MINUTE,
+        windowMs: 60000,
+        resource: 'pje'
+      });
+    } catch (error) {
+      if (error instanceof RateLimitExceededError) {
+        throw new RateLimitExcedidoError(userId);
+      }
+      throw error;
     }
-
-    filtered.push(now);
-    this.requestTimestamps.set(userId, filtered);
   }
 
   private checkCircuitBreaker(): void {

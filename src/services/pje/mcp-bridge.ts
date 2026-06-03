@@ -43,7 +43,13 @@ export class MCPBridge extends EventEmitter {
 
   constructor(serverPath?: string, defaultTimeoutMs = 30000) {
     super();
-    this.serverPath = serverPath || path.resolve('d:/Donna/services/pje-mcp-server/build/index.js');
+    // DT-03 FIX: Nunca usar path hardcoded. Resolve em ordem de prioridade:
+    // 1. Argumento explícito (para testes)
+    // 2. Variável de ambiente PJE_MCP_SERVER_PATH
+    // 3. Fallback relativo ao cwd (portável em qualquer SO)
+    this.serverPath = serverPath
+      || process.env.PJE_MCP_SERVER_PATH
+      || path.resolve(process.cwd(), 'services', 'pje-mcp-server', 'build', 'index.js');
     this.defaultTimeoutMs = defaultTimeoutMs;
   }
 

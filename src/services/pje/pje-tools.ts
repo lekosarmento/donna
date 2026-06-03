@@ -62,7 +62,7 @@ export const PJE_MCP_TOOLS: Record<string, AnthropicTool> = {
   },
 };
 
-#region Schemas de Validação Zod para Respostas da API do PJe
+// #region Schemas de Validação Zod para Respostas da API do PJe
 
 export const pjeParteSchema = z.object({
   tipo: z.enum(['ATIVO', 'PASSIVO', 'Autor', 'Réu', 'Terceiro']),
@@ -94,7 +94,7 @@ export type PjeParte = z.infer<typeof pjeParteSchema>;
 export type PjeMovimento = z.infer<typeof pjeMovimentoSchema>;
 export type PjeProcesso = z.infer<typeof pjeProcessoSchema>;
 
-#endregion
+// #endregion
 
 /**
  * Sanitize e mascara documentos de identificação pessoal (CPF/CNPJ) e informações de terceiros
